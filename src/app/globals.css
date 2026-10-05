@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f6f6f4;
+  --surface: #ffffff;
+  --foreground: #16171a;
+  --muted: #6b6f76;
+  --line: #e4e4e0;
+  --accent: #0b6bcb;
+  --accent-ink: #ffffff;
+  --good: #1f7a4a;
+  --warn: #a15c00;
+  --bad: #b42318;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0e0f11;
+    --surface: #17181b;
+    --foreground: #ececec;
+    --muted: #9a9ea6;
+    --line: #2a2c30;
+    --accent: #4ba3ff;
+    --accent-ink: #06121f;
+    --good: #4cc38a;
+    --warn: #f5a524;
+    --bad: #ff6b5e;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-good: var(--good);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+/* Tailwind v4: shared component classes are declared as custom utilities. */
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50;
+}
+@utility btn-primary {
+  @apply btn bg-accent text-accent-ink hover:opacity-90;
+}
+@utility btn-ghost {
+  @apply btn border border-line bg-surface hover:bg-background;
+}
+@utility btn-danger {
+  @apply btn border border-line bg-surface text-bad hover:bg-background;
+}
+@utility card {
+  @apply rounded-2xl border border-line bg-surface;
+}
+@utility input {
+  @apply w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-accent;
+}
+@utility label {
+  @apply mb-1 block text-xs font-medium text-muted;
+}
