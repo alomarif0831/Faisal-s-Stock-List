@@ -41,7 +41,7 @@ export default async function AdminOrders({ searchParams }: PageProps<"/admin/or
                 <span className="text-xs text-muted">· {timeAgo(o.createdAt)}</span>
               </div>
               <div className="text-right">
-                <div className="font-semibold">{formatMoney(o.totalCents)}</div>
+                <div className="font-semibold">{o.totalCents ? formatMoney(o.totalCents) : "Price pending"}</div>
                 <div className="text-xs text-muted">
                   you pay seller {formatMoney(o.sourcePriceCents * o.quantity)} · margin{" "}
                   {formatMoney(o.totalCents - o.sourcePriceCents * o.quantity)}
@@ -58,7 +58,9 @@ export default async function AdminOrders({ searchParams }: PageProps<"/admin/or
                   <a
                     className="text-xs text-accent underline"
                     target="_blank"
-                    href={`https://wa.me/${sellerPhone.slice(1)}?text=${encodeURIComponent(`Hi, is the ${l.title} for $${l.sourcePriceCents / 100} still available? I'd like ${o.quantity}.`)}`}
+                    href={`https://wa.me/${sellerPhone.slice(1)}?text=${encodeURIComponent(l.sourcePriceCents
+                        ? `Hi, is the ${l.title} for $${l.sourcePriceCents / 100} still available? I'd like ${o.quantity}.`
+                        : `Hi, is the ${l.title} still available? What's your best price for ${o.quantity}?`)}`}
                   >
                     Message seller on WhatsApp
                   </a>

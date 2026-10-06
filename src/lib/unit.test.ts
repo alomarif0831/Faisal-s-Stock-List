@@ -58,8 +58,19 @@ describe("parseWebhook", () => {
   });
 });
 
+describe("sanitize (sold)", () => {
+  it("keeps only sold ids that belong to the seller and doesn't re-list them", () => {
+    const out = sanitize(
+      { is_sale_post: true, items: [{ ...item, existing_listing_id: "a" }], sold_listing_ids: ["a", "zzz"] },
+      0,
+      new Set(["a", "b"]),
+    );
+    expect(out).toEqual({ is_sale_post: true, items: [], sold_listing_ids: ["a"] });
+  });
+});
+
 describe("sanitize", () => {
-  it("drops priceless items and clamps quantity/indexes", () => {
+  it("keeps priceless items as price-on-request and clamps quantity/indexes", () => {
     const out = sanitize(
       {
         is_sale_post: true,
@@ -67,20 +78,22 @@ describe("sanitize", () => {
           { ...item, quantity: 0, image_indexes: [0, 0, 5] },
           { ...item, title: "No price", unit_price: 0 },
         ],
+        sold_listing_ids: [],
       },
       2,
     );
-    expect(out.items).toHaveLength(1);
-    expect(out.items[0]).toMatchObject({ quantity: 1, currency: "USD", image_indexes: [0] });
+    expect(out.items).toHaveLength(2);
+    expect(out.items[0]).toMatchObject({ quantity: 1, currency: "USD", image_indexes: [0], unit_price: 1015 });
+    expect(out.items[1]).toMatchObject({ title: "No price", unit_price: null });
   });
 
   it("gives a lone item every photo when the model didn't map them", () => {
-    const out = sanitize({ is_sale_post: true, items: [item] }, 3);
+    const out = sanitize({ is_sale_post: true, items: [item], sold_listing_ids: [] }, 3);
     expect(out.items[0].image_indexes).toEqual([0, 1, 2]);
   });
 
   it("returns nothing for non-sale posts", () => {
-    expect(sanitize({ is_sale_post: false, items: [item] }, 0)).toEqual({ is_sale_post: false, items: [] });
+    expect(sanitize({ is_sale_post: false, items: [item], sold_listing_ids: [] }, 0)).toEqual({ is_sale_post: false, items: [], sold_listing_ids: [] });
   });
 });
 
@@ -138,6 +151,18 @@ describe("verification decisions", async () => {
     expect(decide(order, listing, a({ outcome: "changed", unit_price: 950 }), 1000)).toMatchObject({ kind: "ask_buyer", unitPriceCents: 96000 });
     expect(decide(order, listing, a({ quantity_available: 1 }), 1000)).toMatchObject({ kind: "ask_buyer", quantity: 1 });
     expect(decide(order, listing, a({ outcome: "changed", notes: "open box now" }), 1000)).toMatchObject({ kind: "ask_buyer" });
+  });
+  it("needs a price before a price-on-request order can go ahead", () => {
+    const noPrice = { sourcePriceCents: null } as import("@/db").Listing;
+    const pendingOrder = { quantity: 1, unitPriceCents: 0 } as import("@/db").Order;
+    expect(decide(pendingOrder, noPrice, a({}), 1000)).toEqual({ kind: "unclear" });
+    // seller names a price -> the buyer approves it before any charge
+    expect(decide(pendingOrder, noPrice, a({ outcome: "changed", unit_price: 450 }), 1000)).toEqual({
+      kind: "ask_buyer",
+      unitPriceCents: 46000,
+      sourcePriceCents: 45000,
+      quantity: 1,
+    });
   });
   it("treats zero stock as unavailable", () => {
     expect(decide(order, listing, a({ quantity_available: 0 }), 1000)).toEqual({ kind: "unavailable" });

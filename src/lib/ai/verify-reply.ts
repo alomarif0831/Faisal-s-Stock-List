@@ -21,7 +21,7 @@ export type SellerAnswer = z.infer<typeof ResultSchema>;
 export type OpenAsk = {
   title: string;
   quantity: number;
-  unitPrice: number;
+  unitPrice: number | null;
   originalMessage: string | null;
 };
 
@@ -39,7 +39,9 @@ export async function readSellerReply(asks: OpenAsk[], reply: string): Promise<S
   const questions = asks
     .map(
       (a, i) =>
-        `Question ${i}: Is "${a.title}" still available, ${a.quantity} unit(s) at $${a.unitPrice} each?` +
+        (a.unitPrice === null
+          ? `Question ${i}: Is "${a.title}" still available (${a.quantity} unit(s)), and what is the price per unit? A stated price here is outcome "changed" with unit_price set.`
+          : `Question ${i}: Is "${a.title}" still available, ${a.quantity} unit(s) at $${a.unitPrice} each?`) +
         (a.originalMessage ? `\nTheir original post: ${a.originalMessage}` : ""),
     )
     .join("\n\n");

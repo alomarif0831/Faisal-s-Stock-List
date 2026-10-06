@@ -4,7 +4,7 @@ import { db, waMessages } from "@/db";
 import { allowedGroups } from "@/lib/config";
 import { timeAgo } from "@/lib/format";
 import { listGroups } from "@/lib/whatsapp/whapi";
-import { reprocessMessage } from "../actions";
+import { recheckIgnored, reprocessMessage } from "../actions";
 
 const TONE: Record<string, string> = {
   pending: "text-warn",
@@ -13,8 +13,12 @@ const TONE: Record<string, string> = {
   failed: "text-bad",
 };
 
-export default async function Inbox() {
+// The "Re-check ignored posts" action keeps working after it responds.
+export const maxDuration = 300;
+
+export default async function Inbox({ searchParams }: PageProps<"/admin/inbox">) {
   await connection(); // live data, never prerender
+  const sp = await searchParams;
   const [rows, groups] = await Promise.all([
     db.select().from(waMessages).orderBy(desc(waMessages.createdAt)).limit(150),
     process.env.WHAPI_TOKEN ? listGroups().catch(() => null) : Promise.resolve(null),
@@ -45,8 +49,20 @@ export default async function Inbox() {
         )}
       </section>
 
+      {typeof sp.rechecking === "string" && (
+        <div className="card border-accent p-3 text-sm">
+          Re-checking {sp.rechecking} posts in the background. New listings appear over the next few minutes; refresh
+          this page to watch statuses change.
+        </div>
+      )}
+
       <section className="space-y-2">
-        <h2 className="text-sm font-semibold">Recent messages</h2>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold">Recent messages</h2>
+          <form action={recheckIgnored}>
+            <button className="btn-ghost">Re-check ignored posts (last 24h)</button>
+          </form>
+        </div>
         {rows.map((m) => (
           <div key={m.id} className="card flex gap-3 p-3 text-sm">
             <div className="min-w-0 flex-1">

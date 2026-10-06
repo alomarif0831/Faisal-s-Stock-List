@@ -35,8 +35,12 @@ export function verificationQuestion(order: Order, listing: Listing): string {
   return [
     `Hi${listing.sellerName ? ` ${listing.sellerName}` : ""}, I have a buyer for this from ${listing.chatName ?? "the group"}:`,
     original ? `\n"${original.length > 700 ? `${original.slice(0, 700)}…` : original}"\n` : `\n${listing.title}\n`,
-    `Do you still have ${order.quantity > 1 ? `${order.quantity} units of ` : ""}the ${listing.title} at ${formatMoney(listing.sourcePriceCents)}${order.quantity > 1 ? " each" : ""}?`,
-    `Has anything changed (price, quantity, condition)? Just reply here. Thanks!`,
+    listing.sourcePriceCents
+      ? `Do you still have ${order.quantity > 1 ? `${order.quantity} units of ` : ""}the ${listing.title} at ${formatMoney(listing.sourcePriceCents)}${order.quantity > 1 ? " each" : ""}?`
+      : `Do you still have ${order.quantity > 1 ? `${order.quantity} units of ` : ""}the ${listing.title}, and what's your best price${order.quantity > 1 ? " each" : ""}?`,
+    listing.sourcePriceCents
+      ? `Has anything changed (price, quantity, condition)? Just reply here. Thanks!`
+      : `Just reply here. Thanks!`,
   ].join("\n");
 }
 
@@ -116,7 +120,7 @@ export async function handleSellerReplies(chatId: string, senderId: string): Pro
       open.map(({ order, listing }) => ({
         title: listing.title,
         quantity: order.quantity,
-        unitPrice: listing.sourcePriceCents / 100,
+        unitPrice: listing.sourcePriceCents === null ? null : listing.sourcePriceCents / 100,
         originalMessage: listing.rawText,
       })),
       reply,
@@ -170,9 +174,12 @@ export function decide(order: Order, listing: Listing, a: SellerAnswer, markupCe
     return { kind: "unavailable" };
   }
   const sourcePriceCents = a.unit_price && a.unit_price > 0 ? Math.round(a.unit_price * 100) : listing.sourcePriceCents;
+  // Price on request and the seller still hasn't named one: we can't sell it yet.
+  if (!sourcePriceCents) return { kind: "unclear" };
   const unitPriceCents = sourcePriceCents + markupCents;
   const quantity = Math.min(order.quantity, a.quantity_available ?? order.quantity);
   const buyerMustAgree =
+    order.unitPriceCents <= 0 || // the buyer never saw a price: they always approve it first
     unitPriceCents > order.unitPriceCents ||
     quantity < order.quantity ||
     (a.outcome === "changed" && Boolean(a.notes));

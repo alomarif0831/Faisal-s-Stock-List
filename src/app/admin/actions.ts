@@ -1,6 +1,7 @@
 "use server";
 
-import { eq } from "drizzle-orm";
+import { and, eq, gte, inArray, like } from "drizzle-orm";
+import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db, listings, orders, waMessages } from "@/db";
@@ -8,7 +9,7 @@ import { requireAdmin } from "@/lib/auth";
 import { MARKUP_CENTS } from "@/lib/config";
 import { cancelOrder, confirmAndCharge } from "@/lib/orders";
 import { startVerification } from "@/lib/verify";
-import { processAfterQuietPeriod } from "@/lib/whatsapp/ingest";
+import { processAfterQuietPeriod, processBurst } from "@/lib/whatsapp/ingest";
 
 const id = (fd: FormData, k = "id") => String(fd.get(k) ?? "");
 const text = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim().slice(0, 300) || null;
@@ -87,6 +88,36 @@ export async function markDelivered(fd: FormData) {
   await requireAdmin();
   await db.update(orders).set({ status: "delivered", updatedAt: new Date() }).where(eq(orders.id, id(fd)));
   revalidatePath("/admin/orders");
+}
+
+/**
+ * Run the last day's skipped group posts through the current rules again
+ * (e.g. after the bot learned to capture posts without a price).
+ */
+export async function recheckIgnored() {
+  await requireAdmin();
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const rows = await db
+    .update(waMessages)
+    .set({ status: "pending", error: null, createdAt: new Date() })
+    .where(
+      and(
+        inArray(waMessages.status, ["ignored", "failed"]),
+        like(waMessages.chatId, "%@g.us"),
+        gte(waMessages.sentAt, since),
+      ),
+    )
+    .returning({ senderId: waMessages.senderId });
+  const senders = [...new Set(rows.map((r) => r.senderId))];
+  // Finish after the response; a few sellers at a time keeps AI usage smooth.
+  after(async () => {
+    for (let i = 0; i < senders.length; i += 4) {
+      await Promise.all(
+        senders.slice(i, i + 4).map((s) => processBurst(s).catch((err) => console.error("[recheck]", err))),
+      );
+    }
+  });
+  redirect(`/admin/inbox?rechecking=${rows.length}`);
 }
 
 export async function reprocessMessage(fd: FormData) {

@@ -56,7 +56,13 @@ export default async function AdminListings({ searchParams }: PageProps<"/admin"
                   <input name="title" defaultValue={l.title} className="input min-w-0 flex-1 font-medium" />
                   <label>
                     <span className="label">Seller price $</span>
-                    <input name="sourcePrice" defaultValue={l.sourcePriceCents / 100} className="input w-24" inputMode="decimal" />
+                    <input
+                      name="sourcePrice"
+                      defaultValue={l.sourcePriceCents === null ? "" : l.sourcePriceCents / 100}
+                      placeholder="none"
+                      className="input w-24"
+                      inputMode="decimal"
+                    />
                   </label>
                   <label>
                     <span className="label">Qty</span>
@@ -69,8 +75,17 @@ export default async function AdminListings({ searchParams }: PageProps<"/admin"
                   {l.details && ` · ${l.details}`}
                 </div>
                 <div className="text-xs">
-                  <span className="font-medium">{formatMoney(l.salePriceCents)}</span>
-                  <span className="text-muted"> sale = {formatMoney(l.sourcePriceCents)} + {formatMoney(l.markupCents)} markup</span>
+                  {l.sourcePriceCents === null ? (
+                    <span className="font-medium text-warn">No price posted: shown as &ldquo;Ask for price&rdquo;</span>
+                  ) : (
+                    <>
+                      <span className="font-medium">{formatMoney(l.salePriceCents ?? 0)}</span>
+                      <span className="text-muted">
+                        {" "}
+                        sale = {formatMoney(l.sourcePriceCents)} + {formatMoney(l.markupCents)} markup
+                      </span>
+                    </>
+                  )}
                 </div>
                 <div className="text-xs text-muted">
                   {l.sellerName ?? "Unknown seller"}

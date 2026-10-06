@@ -82,7 +82,7 @@ describe.skipIf(!DB_URL)("whatsapp -> listings -> orders", () => {
     for (const x of [a, b, t]) expect(await ingest.recordMessage(x)).toBe(true);
     expect(await ingest.recordMessage(t)).toBe(false); // gateway retry
 
-    extract.mockResolvedValueOnce({ is_sale_post: true, items: [iphone(900, [0, 1])] });
+    extract.mockResolvedValueOnce({ sold_listing_ids: [], is_sale_post: true, items: [iphone(900, [0, 1])] });
     // Only the newest message of the burst does the work.
     await Promise.all([a, b, t].map((x) => ingest.processAfterQuietPeriod(x.id)));
     expect(extract).toHaveBeenCalledTimes(1);
@@ -99,12 +99,12 @@ describe.skipIf(!DB_URL)("whatsapp -> listings -> orders", () => {
   it("updates the existing listing when the seller reposts, and attaches late photos", async () => {
     const t1 = msg({ text: "16 Pro 256 black 900" });
     await ingest.recordMessage(t1);
-    extract.mockResolvedValueOnce({ is_sale_post: true, items: [iphone(900)] });
+    extract.mockResolvedValueOnce({ sold_listing_ids: [], is_sale_post: true, items: [iphone(900)] });
     await ingest.processBurst(SELLER);
 
     const late = photo();
     await ingest.recordMessage(late);
-    extract.mockResolvedValueOnce({ is_sale_post: true, items: [iphone(880, [0])] });
+    extract.mockResolvedValueOnce({ sold_listing_ids: [], is_sale_post: true, items: [iphone(880, [0])] });
     await ingest.processBurst(SELLER);
     // the earlier text was re-read alongside the photo
     expect(extract.mock.calls[1][0].text).toContain("16 Pro 256 black 900");
@@ -139,7 +139,7 @@ describe.skipIf(!DB_URL)("whatsapp -> listings -> orders", () => {
 
   it("order request -> paid takes stock off; cancel puts it back", async () => {
     await ingest.recordMessage(msg({ text: "16 Pro 256 black 900" }));
-    extract.mockResolvedValueOnce({ is_sale_post: true, items: [iphone(900)] });
+    extract.mockResolvedValueOnce({ sold_listing_ids: [], is_sale_post: true, items: [iphone(900)] });
     await ingest.processBurst(SELLER);
     const [listing] = await m.db.select().from(m.listings);
 
@@ -174,7 +174,7 @@ describe.skipIf(!DB_URL)("whatsapp -> listings -> orders", () => {
       msg({ chatId, text: "16 Pro 256 black sealed x2 900" }),
     ]);
     for (const c of copies) await ingest.recordMessage(c);
-    extract.mockResolvedValue({ is_sale_post: true, items: [iphone(900, [0])] });
+    extract.mockResolvedValue({ sold_listing_ids: [], is_sale_post: true, items: [iphone(900, [0])] });
     await Promise.all(copies.map((c) => ingest.processAfterQuietPeriod(c.id)));
 
     expect(extract).toHaveBeenCalledTimes(1);
@@ -191,7 +191,7 @@ describe.skipIf(!DB_URL)("whatsapp -> listings -> orders", () => {
     const gate = new Promise<void>((r) => (release = r));
     extract.mockImplementation(async () => {
       await gate; // both calls are in flight before either writes
-      return { is_sale_post: true, items: [iphone(900)] };
+      return { is_sale_post: true, items: [iphone(900)], sold_listing_ids: [] };
     });
     const both = Promise.all([ingest.processBurst(SELLER), ingest.processBurst(SELLER)]);
     await new Promise((r) => setTimeout(r, 50));
@@ -202,7 +202,7 @@ describe.skipIf(!DB_URL)("whatsapp -> listings -> orders", () => {
 
   it("matches a reworded repost to the seller's existing listing", async () => {
     await ingest.recordMessage(msg({ text: "iPhone 16 Pro 256 Black Titanium sealed 900" }));
-    extract.mockResolvedValueOnce({ is_sale_post: true, items: [iphone(900)] });
+    extract.mockResolvedValueOnce({ sold_listing_ids: [], is_sale_post: true, items: [iphone(900)] });
     await ingest.processBurst(SELLER);
     const [first] = await m.db.select().from(m.listings);
     // The AI was shown the existing listing...
@@ -213,7 +213,7 @@ describe.skipIf(!DB_URL)("whatsapp -> listings -> orders", () => {
     });
     await ingest.processBurst(SELLER);
     expect(extract.mock.calls[1][0].existing).toEqual([
-      { id: first.id, title: first.title, condition: "New sealed", price: 900 },
+      { id: first.id, title: first.title, condition: "New sealed", price: 900, postedAgo: "just now" },
     ]);
     // ...and its match updated that listing instead of adding one.
     const rows = await m.db.select().from(m.listings);
@@ -223,12 +223,16 @@ describe.skipIf(!DB_URL)("whatsapp -> listings -> orders", () => {
 
   it("ignores a match pointing at another seller's listing", async () => {
     await ingest.recordMessage(msg({ text: "16 Pro 256 black 900" }));
-    extract.mockResolvedValueOnce({ is_sale_post: true, items: [iphone(900)] });
+    extract.mockResolvedValueOnce({ sold_listing_ids: [], is_sale_post: true, items: [iphone(900)] });
     await ingest.processBurst(SELLER);
     const [theirs] = await m.db.select().from(m.listings);
 
     await ingest.recordMessage(msg({ senderId: "15559998888", text: "16 Pro 256 black 870" }));
-    extract.mockResolvedValueOnce({ is_sale_post: true, items: [{ ...iphone(870), existing_listing_id: theirs.id }] });
+    extract.mockResolvedValueOnce({
+      is_sale_post: true,
+      items: [{ ...iphone(870), existing_listing_id: theirs.id }],
+      sold_listing_ids: [],
+    });
     await ingest.processBurst("15559998888");
     const rows = await m.db.select().from(m.listings).orderBy(m.listings.createdAt);
     expect(rows).toHaveLength(2);
@@ -239,7 +243,7 @@ describe.skipIf(!DB_URL)("whatsapp -> listings -> orders", () => {
     const { searchCatalog, facetCounts } = await import("@/lib/listings");
     for (const [seller, price] of [["15550001111", 900], ["15550002222", 860], ["15550003333", 950]] as const) {
       await ingest.recordMessage(msg({ senderId: seller, text: `16 Pro 256 black ${price}` }));
-      extract.mockResolvedValueOnce({ is_sale_post: true, items: [iphone(price)] });
+      extract.mockResolvedValueOnce({ sold_listing_ids: [], is_sale_post: true, items: [iphone(price)] });
       await ingest.processBurst(seller);
     }
     expect(await m.db.select().from(m.listings)).toHaveLength(3); // every offer kept for the admin
@@ -247,5 +251,87 @@ describe.skipIf(!DB_URL)("whatsapp -> listings -> orders", () => {
     expect(shown).toHaveLength(1);
     expect(shown[0].salePriceCents).toBe(87000);
     expect((await facetCounts()).brands).toEqual([{ value: "Apple", n: 1 }]);
+  });
+
+  it("lists stock posted without a price as price-on-request", async () => {
+    const { searchCatalog } = await import("@/lib/listings");
+    await ingest.recordMessage(msg({ text: "WTS 2x S25 Ultra ATT 256GB A grade, send offers" }));
+    extract.mockResolvedValueOnce({ sold_listing_ids: [], is_sale_post: true, items: [iphone(900)] });
+    await ingest.processBurst(SELLER);
+    await ingest.recordMessage(msg({ senderId: "15557770000", text: "WTS 16 Pro 256 black, DM for price" }));
+    extract.mockResolvedValueOnce({
+      is_sale_post: true,
+      items: [{ ...iphone(0), title: "iPhone 16 Pro 256GB Black (B)", color: "Blue", unit_price: null }],
+      sold_listing_ids: [],
+    });
+    await ingest.processBurst("15557770000");
+    const noPrice = (await m.db.select().from(m.listings)).find((l) => l.sellerId === "15557770000")!;
+    expect(noPrice).toMatchObject({ sourcePriceCents: null, salePriceCents: null, status: "active" });
+    // priced items sort ahead of "Ask for price" ones
+    const shown = await searchCatalog({ sort: "price_asc" });
+    expect(shown.map((l) => l.salePriceCents)).toEqual([91000, null]);
+  });
+
+  it("applies a price posted after the photos to that listing", async () => {
+    await ingest.recordMessage(msg({ text: "iPhone 16 Pro grade B, battery 90%, send best offer" }));
+    extract.mockResolvedValueOnce({
+      is_sale_post: true,
+      items: [{ ...iphone(0), unit_price: null, details: "Grade B, battery 90%" }],
+      sold_listing_ids: [],
+    });
+    await ingest.processBurst(SELLER);
+    const [first] = await m.db.select().from(m.listings);
+    expect(first.sourcePriceCents).toBeNull();
+
+    await ingest.recordMessage(msg({ text: "$450 Shipped" }));
+    extract.mockResolvedValueOnce({
+      is_sale_post: true,
+      items: [{ ...iphone(450), details: null, existing_listing_id: first.id }],
+      sold_listing_ids: [],
+    });
+    await ingest.processBurst(SELLER);
+    expect(extract.mock.calls[1][0].existing[0]).toMatchObject({ id: first.id, price: null });
+    const rows = await m.db.select().from(m.listings);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ sourcePriceCents: 45000, salePriceCents: 46000, details: "Grade B, battery 90%" });
+    expect(rows[0].rawText).toContain("send best offer");
+    expect(rows[0].rawText).toContain("$450 Shipped");
+  });
+
+  it("a repost without a price keeps the price already known", async () => {
+    await ingest.recordMessage(msg({ text: "16 Pro 256 black 900" }));
+    extract.mockResolvedValueOnce({ sold_listing_ids: [], is_sale_post: true, items: [iphone(900)] });
+    await ingest.processBurst(SELLER);
+    await ingest.recordMessage(msg({ text: "16 Pro 256 black still available, offers" }));
+    extract.mockResolvedValueOnce({ is_sale_post: true, items: [{ ...iphone(0), unit_price: null }], sold_listing_ids: [] });
+    await ingest.processBurst(SELLER);
+    const rows = await m.db.select().from(m.listings);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].sourcePriceCents).toBe(90000);
+  });
+
+  it('"Sold" takes the seller\'s listing off the storefront, but never another seller\'s', async () => {
+    await ingest.recordMessage(msg({ text: "16 Pro 256 black 900" }));
+    extract.mockResolvedValueOnce({ sold_listing_ids: [], is_sale_post: true, items: [iphone(900)] });
+    await ingest.processBurst(SELLER);
+    const [mine] = await m.db.select().from(m.listings);
+
+    await ingest.recordMessage(msg({ senderId: "15556660000", text: "15 pro 700" }));
+    extract.mockResolvedValueOnce({
+      is_sale_post: true,
+      items: [{ ...iphone(700), model: "iPhone 15 Pro" }],
+      sold_listing_ids: [],
+    });
+    await ingest.processBurst("15556660000");
+    const theirs = (await m.db.select().from(m.listings)).find((l) => l.sellerId === "15556660000")!;
+
+    await ingest.recordMessage(msg({ text: "Sold" }));
+    // even if the model returned someone else's id, only the sender's listing changes
+    extract.mockResolvedValueOnce({ is_sale_post: true, items: [], sold_listing_ids: [mine.id, theirs.id] });
+    await ingest.processBurst(SELLER);
+    const after = await m.db.select().from(m.listings);
+    expect(after.find((l) => l.id === mine.id)!.status).toBe("sold");
+    expect(after.find((l) => l.id === theirs.id)!.status).toBe("active");
+    expect((await m.db.select().from(m.waMessages)).every((r) => r.status === "done")).toBe(true);
   });
 });

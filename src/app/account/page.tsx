@@ -71,7 +71,7 @@ export default async function AccountPage({ searchParams }: PageProps<"/account"
                     </div>
                     <OrderStatusBadge status={o.status} />
                   </div>
-                  <div className="text-sm font-semibold">{formatMoney(o.totalCents)}</div>
+                  <div className="text-sm font-semibold">{o.totalCents ? formatMoney(o.totalCents) : "Price pending"}</div>
                 </Link>
               </li>
             ))}

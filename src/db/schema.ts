@@ -65,9 +65,11 @@ export const listings = pgTable(
     details: text("details"),
     quantity: integer("quantity").notNull().default(1),
     // Money, in cents. salePrice = sourcePrice + markup at capture time.
-    sourcePriceCents: integer("source_price_cents").notNull(),
+    // Both null when the seller posted without a price ("send offers"):
+    // the storefront shows "Ask for price" and the bot asks the seller.
+    sourcePriceCents: integer("source_price_cents"),
     markupCents: integer("markup_cents").notNull(),
-    salePriceCents: integer("sale_price_cents").notNull(),
+    salePriceCents: integer("sale_price_cents"),
     currency: text("currency").notNull().default("USD"),
     imageIds: uuid("image_ids").array().notNull().default([]),
     // Source (admin-only, never rendered on public pages)

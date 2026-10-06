@@ -5,7 +5,7 @@ import { requestToBuy } from "@/app/actions";
 import { CHECKOUT_MARKS, PaymentBadges } from "@/components/payment-badges";
 import { ProductImage } from "@/components/product-image";
 import { clerkConfigured, getCustomer, hasShipping } from "@/lib/auth";
-import { formatMoney, timeAgo } from "@/lib/format";
+import { formatPrice, timeAgo } from "@/lib/format";
 import { getPublicListing } from "@/lib/listings";
 
 export async function generateMetadata({ params }: PageProps<"/listing/[id]">): Promise<Metadata> {
@@ -60,7 +60,13 @@ export default async function ListingPage({ params }: PageProps<"/listing/[id]">
               {listing.category} · listed {timeAgo(listing.lastSeenAt)}
             </div>
             <h1 className="mt-1 text-2xl font-semibold tracking-tight">{listing.title}</h1>
-            <div className="mt-3 text-3xl font-semibold">{formatMoney(listing.salePriceCents, listing.currency)}</div>
+            <div className="mt-3 text-3xl font-semibold">{formatPrice(listing.salePriceCents, listing.currency)}</div>
+            {!listing.salePriceCents && (
+              <p className="mt-1 text-sm text-muted">
+                The supplier didn&apos;t post a price. Request it and we&apos;ll get you a price to approve before
+                anything is charged.
+              </p>
+            )}
           </div>
 
           <dl className="card divide-y divide-line text-sm">
@@ -134,7 +140,7 @@ export default async function ListingPage({ params }: PageProps<"/listing/[id]">
                     <PaymentBadges marks={CHECKOUT_MARKS} className="mt-2" />
                   </PayOption>
                 </fieldset>
-                <button className="btn-primary w-full">Request to buy</button>
+                <button className="btn-primary w-full">{listing.salePriceCents ? "Request to buy" : "Request a price"}</button>
                 <p className="text-xs text-muted">
                   Ships to {customer.shipCity}, {customer.shipState}. Nothing is charged until we confirm.
                 </p>

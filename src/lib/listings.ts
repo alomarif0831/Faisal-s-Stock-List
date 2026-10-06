@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, countDistinct, desc, eq, gte, ilike, or, type SQL } from "drizzle-orm";
+import { and, countDistinct, desc, eq, gte, ilike, or, sql, type SQL } from "drizzle-orm";
 import { db, listings } from "@/db";
 import { LISTING_TTL_DAYS } from "@/lib/config";
 
@@ -54,14 +54,14 @@ export async function searchCatalog(f: CatalogFilters) {
     .selectDistinctOn([listings.dedupeKey], publicColumns)
     .from(listings)
     .where(and(...where))
-    .orderBy(listings.dedupeKey, asc(listings.salePriceCents), desc(listings.lastSeenAt))
+    .orderBy(listings.dedupeKey, sql`${listings.salePriceCents} asc nulls last`, desc(listings.lastSeenAt))
     .as("cheapest");
 
   const order =
     f.sort === "price_asc"
-      ? [asc(cheapest.salePriceCents)]
+      ? [sql`${cheapest.salePriceCents} asc nulls last`]
       : f.sort === "price_desc"
-        ? [desc(cheapest.salePriceCents)]
+        ? [sql`${cheapest.salePriceCents} desc nulls last`]
         : [desc(cheapest.lastSeenAt)];
 
   return db.select().from(cheapest).orderBy(...order).limit(240);

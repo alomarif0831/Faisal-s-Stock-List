@@ -47,8 +47,10 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/ac
             <OrderStatusBadge status={order.status} />
           </div>
           <div className="text-right">
-            <div className="text-xl font-semibold">{formatMoney(order.totalCents)}</div>
-            {order.quantity > 1 && <div className="text-xs text-muted">{formatMoney(order.unitPriceCents)} each</div>}
+            <div className="text-xl font-semibold">
+              {order.totalCents ? formatMoney(order.totalCents) : "Price pending"}
+            </div>
+            {order.quantity > 1 && order.unitPriceCents > 0 && <div className="text-xs text-muted">{formatMoney(order.unitPriceCents)} each</div>}
           </div>
         </div>
 
@@ -72,12 +74,14 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/ac
 
         {order.status === "needs_buyer_approval" && order.proposedUnitPriceCents && (
           <div className="space-y-3 rounded-xl border border-warn bg-background p-4 text-sm">
-            <p className="font-medium">It&apos;s available, but something changed:</p>
+            <p className="font-medium">
+              {order.unitPriceCents > 0 ? "It\u2019s available, but something changed:" : "It\u2019s available! Here\u2019s your price:"}
+            </p>
             {order.verifySummary && <p className="text-muted">{order.verifySummary}</p>}
             <dl className="grid grid-cols-2 gap-1">
               <dt className="text-muted">Price</dt>
               <dd>
-                {order.proposedUnitPriceCents !== order.unitPriceCents && (
+                {order.unitPriceCents > 0 && order.proposedUnitPriceCents !== order.unitPriceCents && (
                   <s className="mr-1 text-muted">{formatMoney(order.unitPriceCents)}</s>
                 )}
                 {formatMoney(order.proposedUnitPriceCents)} each

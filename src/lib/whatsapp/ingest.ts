@@ -6,6 +6,7 @@ import { dedupeKeyFor } from "@/lib/catalog";
 
 export { dedupeKeyFor };
 import { allowedGroups, MARKUP_CENTS, PAIRING_WINDOW_MS } from "@/lib/config";
+import { timeAgo } from "@/lib/format";
 import { handleSellerReplies, hasOpenVerification } from "@/lib/verify";
 import { downloadImage, fetchGroupName, isGroupChat, type IncomingMessage } from "./whapi";
 
@@ -177,7 +178,13 @@ export async function processBurst(senderId: string): Promise<void> {
   // What this seller already has listed, so a repost is matched to its
   // listing even when it's worded differently.
   const existing = await db
-    .select({ id: listings.id, title: listings.title, condition: listings.condition, price: listings.sourcePriceCents })
+    .select({
+      id: listings.id,
+      title: listings.title,
+      condition: listings.condition,
+      price: listings.sourcePriceCents,
+      lastSeenAt: listings.lastSeenAt,
+    })
     .from(listings)
     .where(and(eq(listings.sellerId, senderId), ne(listings.status, "sold")))
     .orderBy(desc(listings.lastSeenAt))
@@ -187,7 +194,13 @@ export async function processBurst(senderId: string): Promise<void> {
     const result = await extractListings({
       text: texts.join("\n\n") || null,
       images: orderedImages.map((r) => ({ mimeType: r.mimeType, data: r.data })),
-      existing: existing.map((e) => ({ id: e.id, title: e.title, condition: e.condition, price: e.price / 100 })),
+      existing: existing.map((e) => ({
+        id: e.id,
+        title: e.title,
+        condition: e.condition,
+        price: e.price === null ? null : e.price / 100,
+        postedAgo: timeAgo(e.lastSeenAt),
+      })),
     });
     if (!result.is_sale_post) {
       await db.update(waMessages).set({ status: "ignored" }).where(inArray(waMessages.id, ids));
@@ -195,6 +208,20 @@ export async function processBurst(senderId: string): Promise<void> {
     }
     const last = pending[pending.length - 1];
     const existingIds = new Set(existing.map((e) => e.id));
+    if (result.sold_listing_ids?.length) {
+      // "Sold" from the seller: take it off the storefront. Scoped to this
+      // seller's own unsold listings, whatever ids the model returned.
+      await db
+        .update(listings)
+        .set({ status: "sold", updatedAt: new Date() })
+        .where(
+          and(
+            inArray(listings.id, result.sold_listing_ids),
+            eq(listings.sellerId, senderId),
+            ne(listings.status, "sold"),
+          ),
+        );
+    }
     const touched = new Set<string>();
     for (const item of result.items) {
       // Two items in one post that resolve to the same listing: keep the first.
@@ -229,7 +256,8 @@ type Source = {
   imageIds: string[];
 };
 
-export function priceFields(unitPrice: number) {
+export function priceFields(unitPrice: number | null) {
+  if (unitPrice === null) return { sourcePriceCents: null, markupCents: MARKUP_CENTS, salePriceCents: null };
   const sourcePriceCents = Math.round(unitPrice * 100);
   return {
     sourcePriceCents,
@@ -260,26 +288,41 @@ async function upsertListing(
     ...priceFields(item.unit_price),
   };
   const now = new Date();
-  const refresh = (existingImages: string[]) => ({
-    ...product,
-    imageIds: src.imageIds.length ? src.imageIds : existingImages,
-    chatId: src.chatId,
-    chatName: src.chatName,
-    sellerName: src.sellerName,
-    sourceMessageId: src.sourceMessageId,
-    rawText: src.rawText,
-    lastSeenAt: now,
-    updatedAt: now,
-  });
 
-  // 1. Claude matched it to one of this seller's existing listings.
+  // 1. Claude matched it to one of this seller's existing listings (a
+  //    repost, or a follow-up like "$450 shipped" / "price drop 1570").
   const matchId = item.existing_listing_id;
   if (matchId && sellersListingIds.has(matchId) && !alreadyTouched.has(matchId)) {
-    const [row] = await db.select({ imageIds: listings.imageIds }).from(listings).where(eq(listings.id, matchId));
+    const [row] = await db.select().from(listings).where(eq(listings.id, matchId));
     if (row) {
-      // Keep the row's own dedupe key: rewriting it could collide with
-      // another listing of the same seller.
-      await db.update(listings).set(refresh(row.imageIds)).where(eq(listings.id, matchId));
+      // A short follow-up carries less detail than the original post, so
+      // only overwrite what it actually states. The row keeps its own
+      // dedupe key: rewriting it could collide with another listing.
+      const keepPrice = item.unit_price === null;
+      await db
+        .update(listings)
+        .set({
+          title: product.title || row.title,
+          category: product.category,
+          model: product.model ?? row.model,
+          storage: product.storage ?? row.storage,
+          color: product.color ?? row.color,
+          condition: product.condition,
+          details: product.details ?? row.details,
+          quantity: product.quantity,
+          sourcePriceCents: keepPrice ? row.sourcePriceCents : product.sourcePriceCents,
+          markupCents: keepPrice ? row.markupCents : product.markupCents,
+          salePriceCents: keepPrice ? row.salePriceCents : product.salePriceCents,
+          imageIds: src.imageIds.length ? src.imageIds : row.imageIds,
+          chatId: src.chatId,
+          chatName: src.chatName,
+          sellerName: src.sellerName,
+          sourceMessageId: src.sourceMessageId,
+          rawText: mergeText(row.rawText, src.rawText),
+          lastSeenAt: now,
+          updatedAt: now,
+        })
+        .where(eq(listings.id, matchId));
       return matchId;
     }
   }
@@ -294,6 +337,15 @@ async function upsertListing(
       targetWhere: sql`${listings.status} <> 'sold'`,
       set: {
         ...product,
+        // a repost without a price keeps the price we already have
+        ...(item.unit_price === null
+          ? {
+              sourcePriceCents: sql`${listings.sourcePriceCents}`,
+              markupCents: sql`${listings.markupCents}`,
+              salePriceCents: sql`${listings.salePriceCents}`,
+            }
+          : {}),
+        details: product.details ?? sql`${listings.details}`,
         // keep the old photos when this post has none
         imageIds: src.imageIds.length ? src.imageIds : sql`${listings.imageIds}`,
         chatId: src.chatId,
@@ -307,4 +359,11 @@ async function upsertListing(
     })
     .returning({ id: listings.id });
   return row.id;
+}
+
+/** Keep the original post and add the follow-up below it (once). */
+export function mergeText(previous: string | null, next: string): string {
+  if (!previous) return next;
+  if (previous.includes(next)) return previous;
+  return `${previous}\n\n${next}`.slice(-4000);
 }

@@ -57,7 +57,11 @@ describe.skipIf(!DB_URL)("automatic seller verification", () => {
   });
 
   let n = 0;
-  async function setup(quantity = 1, paymentChoice: "saved_card" | "checkout" = "saved_card") {
+  async function setup(
+    quantity = 1,
+    paymentChoice: "saved_card" | "checkout" = "saved_card",
+    sourcePriceCents: number | null = 90000,
+  ) {
     sent.length = 0;
     charges.length = 0;
     readReply.mockReset();
@@ -75,9 +79,9 @@ describe.skipIf(!DB_URL)("automatic seller verification", () => {
         category: "Phones",
         condition: "New sealed",
         quantity: 3,
-        sourcePriceCents: 90000,
+        sourcePriceCents,
         markupCents: 1000,
-        salePriceCents: 91000,
+        salePriceCents: sourcePriceCents === null ? null : sourcePriceCents + 1000,
         imageIds: [img.id],
         chatId: "120363222@g.us",
         chatName: "Resellers 1",
@@ -231,5 +235,24 @@ describe.skipIf(!DB_URL)("automatic seller verification", () => {
       verifyStatus: "confirmed",
       checkoutUrl: "https://checkout.stripe.test/cs_test",
     });
+  });
+
+  it("price-on-request: bot asks the seller's price, buyer approves, then pays", async () => {
+    const { order } = await setup(1, "saved_card", null);
+    expect(order).toMatchObject({ unitPriceCents: 0, totalCents: 0 });
+    expect(sent[0].body).toContain("what's your best price");
+    // the admin can't charge before there is a price
+    expect(await orders.confirmAndCharge(order.id)).toMatchObject({ ok: false });
+
+    readReply.mockResolvedValueOnce([answer({ outcome: "changed", unit_price: 450, summary: "Seller wants $450" })]);
+    await sellerSays("450 shipped");
+    expect(charges).toEqual([]);
+    const pending = await getOrder(order.id);
+    expect(pending).toMatchObject({ status: "needs_buyer_approval", proposedUnitPriceCents: 46000 });
+    expect(await getListing()).toMatchObject({ sourcePriceCents: 45000, salePriceCents: 46000 });
+
+    await verify.acceptChange(pending);
+    expect(charges).toEqual([46000]);
+    expect(await getOrder(order.id)).toMatchObject({ status: "paid", totalCents: 46000 });
   });
 });

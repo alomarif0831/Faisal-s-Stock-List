@@ -41,9 +41,10 @@ export async function createOrderRequest(
       listingId: listing.id,
       quantity: qty,
       title: listing.title,
-      unitPriceCents: listing.salePriceCents,
-      totalCents: listing.salePriceCents * qty,
-      sourcePriceCents: listing.sourcePriceCents,
+      // 0 = price on request: the seller is asked, the buyer approves it.
+      unitPriceCents: listing.salePriceCents ?? 0,
+      totalCents: (listing.salePriceCents ?? 0) * qty,
+      sourcePriceCents: listing.sourcePriceCents ?? 0,
       shipping: shippingFrom(customer),
       buyerNote: note,
       paymentChoice: customer.hasPaymentMethod ? paymentChoice : "checkout",
@@ -52,7 +53,7 @@ export async function createOrderRequest(
 
   await notifyAdmin(
     `New order request: ${qty} x ${listing.title} for ${formatMoney(order.totalCents)}.\n` +
-      `Seller: ${listing.sellerName ?? listing.sellerId} (${listing.chatName ?? listing.chatId}) asked ${formatMoney(listing.sourcePriceCents)}.\n` +
+      `Seller: ${listing.sellerName ?? listing.sellerId} (${listing.chatName ?? listing.chatId}) asked ${listing.sourcePriceCents ? formatMoney(listing.sourcePriceCents) : "no price yet"}.\n` +
       `Review: ${appUrl("/admin/orders")}`,
   );
   return order;
@@ -73,6 +74,9 @@ export async function confirmAndCharge(orderId: string): Promise<ChargeResult> {
   if (!order) return { ok: false, reason: "Order not found" };
   if (!CHARGEABLE.includes(order.status)) {
     return { ok: false, reason: `Order is already ${order.status}` };
+  }
+  if (order.totalCents <= 0) {
+    return { ok: false, reason: "No price yet. Get the seller's price first (Ask seller again), then the buyer approves it." };
   }
   const [customer] = await db.select().from(customers).where(eq(customers.id, order.customerId));
   const stripe = getStripe();
