@@ -8,8 +8,25 @@ declare global {
   var __stock_db: DB | undefined;
 }
 
+// Vercel's Neon integration sets DATABASE_URL; the others are aliases it
+// (or a custom prefix) may create.
+function databaseUrl(): string | undefined {
+  const raw = process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? process.env.NEON_DATABASE_URL;
+  if (!raw) return undefined;
+  try {
+    // Neon URLs carry `channel_binding=require`, which libpq understands but
+    // postgres.js forwards to the server as a startup parameter, and the
+    // server rejects it ("unrecognized configuration parameter").
+    const url = new URL(raw);
+    url.searchParams.delete("channel_binding");
+    return url.toString();
+  } catch {
+    return raw;
+  }
+}
+
 function makeDb(): DB {
-  const url = process.env.DATABASE_URL;
+  const url = databaseUrl();
   if (!url) {
     // Let the app boot (and `next build` run) without a database; the
     // first query explains what's missing.
