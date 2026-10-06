@@ -1,12 +1,11 @@
 import Link from "next/link";
-import { auth } from "@clerk/nextjs/server";
 import { UserButton } from "@clerk/nextjs";
-import { clerkConfigured, isAdmin } from "@/lib/auth";
+import { clerkConfigured, currentUserId, isAdmin } from "@/lib/auth";
 import { SITE_NAME } from "@/lib/config";
 import { OnyxGem } from "./onyx-mark";
 
 export async function SiteHeader() {
-  const signedIn = clerkConfigured() ? Boolean((await auth()).userId) : false;
+  const signedIn = Boolean(await currentUserId());
   const admin = signedIn && (await isAdmin());
 
   return (

@@ -16,9 +16,22 @@ async function primaryEmail(): Promise<string | null> {
   return (primary ?? user.emailAddresses[0])?.emailAddress.toLowerCase() ?? null;
 }
 
+/**
+ * The signed-in user id, or null. Never throws: on requests the Clerk
+ * proxy doesn't run for (e.g. a 404 for /favicon.ico rendering the site
+ * header), auth() throws, and that must not crash the page.
+ */
+export async function currentUserId(): Promise<string | null> {
+  if (!clerkConfigured()) return null;
+  try {
+    return (await auth()).userId;
+  } catch {
+    return null;
+  }
+}
+
 export async function isAdmin(): Promise<boolean> {
-  if (!clerkConfigured()) return false;
-  const { userId } = await auth();
+  const userId = await currentUserId();
   if (!userId) return false;
   const email = await primaryEmail();
   return Boolean(email && adminEmails().includes(email));
@@ -33,8 +46,7 @@ export async function requireAdmin(): Promise<void> {
 
 /** The signed-in buyer's customer row, created on first visit. Null when signed out. */
 export async function getCustomer(): Promise<Customer | null> {
-  if (!clerkConfigured()) return null;
-  const { userId } = await auth();
+  const userId = await currentUserId();
   if (!userId) return null;
 
   const [existing] = await db.select().from(customers).where(eq(customers.clerkUserId, userId));

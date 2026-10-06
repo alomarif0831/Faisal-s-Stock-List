@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Geist, Geist_Mono } from "next/font/google";
+import { headers } from "next/headers";
 import { PaymentBadges } from "@/components/payment-badges";
 import { SiteHeader } from "@/components/site-header";
 import { clerkConfigured } from "@/lib/auth";
@@ -16,7 +17,7 @@ export const metadata: Metadata = {
   description: "Phones, tablets, laptops and more from Apple, Samsung and other brands, in stock now.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
   const page = (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col font-sans">
@@ -30,5 +31,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     </html>
   );
   if (!clerkConfigured()) return page;
-  return <ClerkProvider proxyUrl={clerkProxyEnabled() ? CLERK_PROXY_PATH : undefined}>{page}</ClerkProvider>;
+  const host = (await headers()).get("host");
+  return (
+    <ClerkProvider proxyUrl={clerkProxyEnabled(host) ? CLERK_PROXY_PATH : undefined}>{page}</ClerkProvider>
+  );
 }

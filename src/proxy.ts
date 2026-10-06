@@ -9,17 +9,13 @@ const isProtected = createRouteMatcher(["/account(.*)", "/admin(.*)"]);
 const clerkConfigured =
   !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && !!process.env.CLERK_SECRET_KEY;
 
-// Production (pk_live_) keys on a *.vercel.app domain can't use Clerk's
-// DNS records, so Clerk is reached through /__clerk on this app instead.
-// Enabled explicitly rather than relying on Clerk's auto-detection, which
-// depends on Vercel system env vars being exposed.
-const useClerkProxy = clerkProxyEnabled();
-
+// Live Clerk keys on a *.vercel.app address reach Clerk through /__clerk on
+// this app; on a custom domain they use Clerk's own DNS (see clerk-proxy.ts).
 const withClerk = clerkMiddleware(
   async (auth, req) => {
     if (isProtected(req)) await auth.protect();
   },
-  useClerkProxy ? { frontendApiProxy: { enabled: true } } : {},
+  (req) => ({ frontendApiProxy: { enabled: clerkProxyEnabled(req.headers.get("host")) } }),
 );
 
 export function proxy(req: NextRequest, ev: NextFetchEvent) {
