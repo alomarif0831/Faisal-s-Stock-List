@@ -115,13 +115,14 @@ describe.skipIf(!DB_URL)("whatsapp -> listings -> orders", () => {
     expect(rows[0].imageIds).toHaveLength(1);
   });
 
-  it("marks chatter as ignored and AI errors as failed", async () => {
+  it("marks chatter as ignored (without an AI call) and AI errors as failed", async () => {
     await ingest.recordMessage(msg({ text: "anyone have S24 Ultra?" }));
-    extract.mockResolvedValueOnce({ is_sale_post: false, items: [] });
     await ingest.processBurst(SELLER);
+    expect(extract).not.toHaveBeenCalled(); // filtered for free
     await ingest.recordMessage(msg({ text: "15 pro 700" }));
     extract.mockRejectedValueOnce(new Error("boom"));
     await ingest.processBurst(SELLER);
+    expect(extract).toHaveBeenCalledTimes(1);
     const rows = await m.db.select().from(m.waMessages).orderBy(m.waMessages.sentAt);
     expect(rows.map((r) => r.status)).toEqual(["ignored", "failed"]);
     expect(rows[1].error).toBe("boom");

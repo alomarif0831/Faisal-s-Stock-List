@@ -190,6 +190,12 @@ export async function processBurst(senderId: string): Promise<void> {
     .orderBy(desc(listings.lastSeenAt))
     .limit(60);
 
+  // Free pre-filter: obvious chatter never reaches the AI.
+  if (!orderedImages.length && texts.every((t) => isObviousChatter(t, existing.length > 0))) {
+    await db.update(waMessages).set({ status: "ignored" }).where(inArray(waMessages.id, ids));
+    return;
+  }
+
   try {
     const result = await extractListings({
       text: texts.join("\n\n") || null,
@@ -366,4 +372,27 @@ export function mergeText(previous: string | null, next: string): string {
   if (!previous) return next;
   if (previous.includes(next)) return previous;
   return `${previous}\n\n${next}`.slice(-4000);
+}
+
+const BUYING = /^(wtb|want(ing)? to buy|looking for|lf\b|need\b|anyone (have|has|got|selling)|who (has|have|got|buys|is buying|pays|is paying|wants))/i;
+const SOLD_WORDS = /\b(sold|gone|no more|out of stock|sold out|pending)\b/i;
+
+/**
+ * Text-only messages that can't contain stock for sale, so they're skipped
+ * without an AI call: buy requests ("WTB…"), questions with no numbers,
+ * and short no-number replies ("take", "ship", "dm me", "bumpp", @mentions).
+ * When the sender already has listings, "sold"-type replies still go to
+ * the AI so the listing can be taken down.
+ */
+export function isObviousChatter(text: string, senderHasListings: boolean): boolean {
+  const t = text.replace(/\s+/g, " ").trim();
+  if (!t) return true;
+  if (senderHasListings && SOLD_WORDS.test(t)) return false;
+  if (BUYING.test(t)) return true;
+  const hasNumber = /\d/.test(t.replace(/@\d+/g, ""));
+  if (hasNumber) return false;
+  const words = t.split(" ").filter((w) => !w.startsWith("@"));
+  if (words.length === 0) return true; // only @mentions
+  if (t.endsWith("?")) return true;
+  return words.length <= 4;
 }

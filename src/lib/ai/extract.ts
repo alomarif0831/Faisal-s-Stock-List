@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { BRANDS, CATEGORIES, CONDITIONS } from "@/lib/catalog";
-import { anthropic, MODEL } from "./client";
+import { anthropic, MODEL, modelOptions } from "./client";
 
 const ItemSchema = z.object({
   title: z.string().describe('Short storefront title, e.g. "iPhone 16 Pro Max 256GB Natural Titanium"'),
@@ -97,14 +97,12 @@ export async function extractListings(input: ExtractInput): Promise<Extraction> 
       : "The message has no text, only the images above.",
   });
 
+  const { effort, ...routing } = modelOptions("medium");
   const response = await anthropic().beta.messages.parse({
     model: MODEL,
     max_tokens: 16000,
-    // If a safety classifier declines, let the API retry on its
-    // recommended fallback model instead of returning nothing.
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default",
-    output_config: { effort: "medium", format: betaZodOutputFormat(ExtractionSchema) },
+    ...routing,
+    output_config: { ...(effort ? { effort } : {}), format: betaZodOutputFormat(ExtractionSchema) },
     system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
     messages: [{ role: "user", content }],
   });

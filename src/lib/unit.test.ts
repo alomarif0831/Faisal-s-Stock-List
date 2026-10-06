@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { sanitize } from "@/lib/ai/extract";
 import { formatMoney, phoneFromJid } from "@/lib/format";
-import { dedupeKeyFor, priceFields } from "@/lib/whatsapp/ingest";
+import { dedupeKeyFor, isObviousChatter, priceFields } from "@/lib/whatsapp/ingest";
 import { parseWebhook } from "@/lib/whatsapp/whapi";
 
 const item = {
@@ -166,5 +166,38 @@ describe("verification decisions", async () => {
   });
   it("treats zero stock as unavailable", () => {
     expect(decide(order, listing, a({ quantity_available: 0 }), 1000)).toEqual({ kind: "unavailable" });
+  });
+});
+
+describe("isObviousChatter", () => {
+  // Real messages from the groups that never contain stock for sale.
+  it.each([
+    "take",
+    "BUMPPP",
+    "dm bro",
+    "Check pm",
+    "@146346833113259",
+    "@75810518110418 check dm plz",
+    "WTB 18 Pro Max Tmobile no Gt",
+    "Want to buy MacBook Air m1 256/8 512/8 512/16 Pm me",
+    "Any anker power power banks ?",
+    "Tmobile unlocks still up?",
+  ])("skips %j", (t) => expect(isObviousChatter(t, false)).toBe(true));
+
+  // These must still go to the AI.
+  it.each([
+    "WTS Samsung S25 Ultra-256GB Grade A 200+ Pcs Available The Best deal you ever get.",
+    "$450 Shipped",
+    "Whos paying high for fold8 256gb unlocked mint?", // a seller fishing for offers
+    "Price drop $1570",
+    "10x ipad a16 wifi new seal - your labels",
+    "WTS: MBP16 M5 SILVER,CTO,Z1MW Sealed active Nano screen",
+    "Wts s26 ultra Samsung renewed unlocked dm offers",
+  ])("keeps %j", (t) => expect(isObviousChatter(t, false)).toBe(false));
+
+  it('sends "Sold" to the AI only when the sender has listings', () => {
+    expect(isObviousChatter("Sold", false)).toBe(true);
+    expect(isObviousChatter("Sold", true)).toBe(false);
+    expect(isObviousChatter("SOOOOLD THANKS", true)).toBe(true); // not a clear sold word; harmless either way
   });
 });

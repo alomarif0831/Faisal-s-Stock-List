@@ -1,6 +1,6 @@
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
-import { anthropic, MODEL } from "./client";
+import { anthropic, MODEL, modelOptions } from "./client";
 
 const ResultSchema = z.object({
   ask_index: z.number().int().describe("Which question (0-based) this answer is about"),
@@ -46,12 +46,12 @@ export async function readSellerReply(asks: OpenAsk[], reply: string): Promise<S
     )
     .join("\n\n");
 
+  const { effort, ...routing } = modelOptions("low");
   const response = await anthropic().beta.messages.parse({
     model: MODEL,
     max_tokens: 4000,
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default",
-    output_config: { effort: "low", format: betaZodOutputFormat(ReplySchema) },
+    ...routing,
+    output_config: { ...(effort ? { effort } : {}), format: betaZodOutputFormat(ReplySchema) },
     system: SYSTEM,
     messages: [{ role: "user", content: `${questions}\n\nSupplier's reply:\n${reply}` }],
   });
