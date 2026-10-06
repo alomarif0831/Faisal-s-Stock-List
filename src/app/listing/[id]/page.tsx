@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requestToBuy } from "@/app/actions";
+import { CHECKOUT_MARKS, PaymentBadges } from "@/components/payment-badges";
 import { ProductImage } from "@/components/product-image";
 import { clerkConfigured, getCustomer, hasShipping } from "@/lib/auth";
 import { formatMoney, timeAgo } from "@/lib/format";
@@ -18,7 +19,7 @@ export default async function ListingPage({ params }: PageProps<"/listing/[id]">
   if (!listing) notFound();
 
   const customer = await getCustomer();
-  const ready = customer && hasShipping(customer) && customer.hasPaymentMethod;
+  const ready = customer && hasShipping(customer);
   const specs = [
     ["Brand", listing.brand],
     ["Model", listing.model],
@@ -39,6 +40,7 @@ export default async function ListingPage({ params }: PageProps<"/listing/[id]">
             id={listing.imageIds[0]}
             alt={listing.title}
             fallbackLabel={listing.brand}
+            category={listing.category}
             className="card aspect-square w-full object-contain p-4"
           />
           {listing.imageIds.length > 1 && (
@@ -71,12 +73,17 @@ export default async function ListingPage({ params }: PageProps<"/listing/[id]">
           </dl>
           {listing.details && <p className="text-sm leading-relaxed text-muted">{listing.details}</p>}
 
+          <div className="space-y-2">
+            <div className="text-xs font-medium text-muted">Pay your way</div>
+            <PaymentBadges />
+          </div>
+
           <div className="card space-y-3 p-4">
             <h2 className="font-semibold">How buying works</h2>
             <ol className="list-decimal space-y-1 pl-5 text-sm text-muted">
               <li>Send a request. Nothing is charged yet.</li>
               <li>We check with our supplier that it&apos;s still available, usually within the hour.</li>
-              <li>Your saved card is charged and the item ships to your address.</li>
+              <li>You pay (saved card, Apple Pay, Klarna and more) and it ships to your address.</li>
             </ol>
             {!clerkConfigured() ? (
               <p className="text-sm text-muted">Ordering opens soon.</p>
@@ -86,7 +93,7 @@ export default async function ListingPage({ params }: PageProps<"/listing/[id]">
               </Link>
             ) : !ready ? (
               <Link href={`/account?next=/listing/${listing.id}`} className="btn-primary w-full">
-                Add shipping address &amp; card to request
+                Add your shipping address to request
               </Link>
             ) : (
               <form action={requestToBuy} className="space-y-3">
@@ -108,10 +115,28 @@ export default async function ListingPage({ params }: PageProps<"/listing/[id]">
                   <span className="label">Note (optional)</span>
                   <input name="note" maxLength={500} className="input" placeholder="Anything we should know?" />
                 </label>
+                <fieldset className="space-y-2">
+                  <legend className="label">How do you want to pay?</legend>
+                  {customer.hasPaymentMethod && (
+                    <PayOption value="saved_card" defaultChecked>
+                      <span className="font-medium capitalize">
+                        Saved {customer.cardBrand} ending {customer.cardLast4}
+                      </span>
+                      <span className="block text-xs text-muted">Charged automatically once it&apos;s confirmed.</span>
+                    </PayOption>
+                  )}
+                  <PayOption value="checkout" defaultChecked={!customer.hasPaymentMethod}>
+                    <span className="font-medium">Pay at checkout</span>
+                    <span className="block text-xs text-muted">
+                      Once it&apos;s confirmed you get a Pay button: Apple Pay, Google Pay, Klarna, Afterpay, Affirm,
+                      Amazon Pay, Cash App Pay or any card.
+                    </span>
+                    <PaymentBadges marks={CHECKOUT_MARKS} className="mt-2" />
+                  </PayOption>
+                </fieldset>
                 <button className="btn-primary w-full">Request to buy</button>
                 <p className="text-xs text-muted">
-                  Ships to {customer.shipCity}, {customer.shipState}. Card ending {customer.cardLast4} is charged
-                  only after we confirm.
+                  Ships to {customer.shipCity}, {customer.shipState}. Nothing is charged until we confirm.
                 </p>
               </form>
             )}
@@ -119,5 +144,22 @@ export default async function ListingPage({ params }: PageProps<"/listing/[id]">
         </div>
       </div>
     </div>
+  );
+}
+
+function PayOption({
+  value,
+  defaultChecked,
+  children,
+}: {
+  value: "saved_card" | "checkout";
+  defaultChecked?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="flex cursor-pointer gap-3 rounded-xl border border-line p-3 text-sm has-[:checked]:border-accent has-[:checked]:bg-background">
+      <input type="radio" name="payment" value={value} defaultChecked={defaultChecked} className="mt-1 accent-[var(--accent)]" />
+      <span className="min-w-0 flex-1">{children}</span>
+    </label>
   );
 }

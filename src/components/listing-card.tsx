@@ -14,6 +14,7 @@ export function ListingCard({ listing }: { listing: PublicListing }) {
         alt={listing.title}
         className="aspect-square w-full bg-background object-contain p-3 transition-transform group-hover:scale-[1.02]"
         fallbackLabel={listing.brand}
+        category={listing.category}
       />
       <div className="flex flex-1 flex-col gap-1 border-t border-line p-3">
         <div className="text-[11px] font-medium uppercase tracking-wide text-muted">

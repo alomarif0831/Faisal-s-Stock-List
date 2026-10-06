@@ -1,7 +1,7 @@
 import "server-only";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import Stripe from "stripe";
-import { customers, db, listings, orders, type Customer, type Order, type ShippingAddress } from "@/db";
+import { customers, db, listings, orders, type Customer, type Order, type PaymentChoice, type ShippingAddress } from "@/db";
 import { appUrl } from "@/lib/config";
 import { formatMoney } from "@/lib/format";
 import { ensureStripeCustomer, getStripe } from "@/lib/stripe";
@@ -25,6 +25,7 @@ export async function createOrderRequest(
   listingId: string,
   quantity: number,
   note: string | null,
+  paymentChoice: PaymentChoice = "saved_card",
 ): Promise<Order> {
   const [listing] = await db
     .select()
@@ -45,6 +46,7 @@ export async function createOrderRequest(
       sourcePriceCents: listing.sourcePriceCents,
       shipping: shippingFrom(customer),
       buyerNote: note,
+      paymentChoice: customer.hasPaymentMethod ? paymentChoice : "checkout",
     })
     .returning();
 
@@ -76,7 +78,7 @@ export async function confirmAndCharge(orderId: string): Promise<ChargeResult> {
   const stripe = getStripe();
   const stripeCustomer = await ensureStripeCustomer(customer);
 
-  if (customer.paymentMethodId) {
+  if (customer.paymentMethodId && order.paymentChoice === "saved_card") {
     try {
       const pi = await stripe.paymentIntents.create(
         {
@@ -129,9 +131,12 @@ export async function confirmAndCharge(orderId: string): Promise<ChargeResult> {
     .where(eq(orders.id, order.id));
   return {
     ok: false,
-    reason: customer.paymentMethodId
-      ? "The saved card needs the buyer's approval. They now have a Pay button on their order."
-      : "The buyer has no saved card. They now have a Pay button on their order.",
+    reason:
+      order.paymentChoice === "checkout"
+        ? "The buyer chose to pay at checkout. They now have a Pay button on their order."
+        : customer.paymentMethodId
+          ? "The saved card needs the buyer's approval. They now have a Pay button on their order."
+          : "The buyer has no saved card. They now have a Pay button on their order.",
   };
 }
 

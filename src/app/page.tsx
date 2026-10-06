@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ListingCard } from "@/components/listing-card";
+import { PaymentBadges } from "@/components/payment-badges";
 import { BRANDS, CATEGORIES, CONDITIONS } from "@/lib/catalog";
 import { facetCounts, searchCatalog, type CatalogFilters } from "@/lib/listings";
 
@@ -67,6 +68,14 @@ export default async function CatalogPage({ searchParams }: PageProps<"/">) {
           <button className="btn-primary">Search</button>
         </form>
       </section>
+
+      <div className="card flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="text-sm">
+          <span className="font-medium">Pay your way</span>
+          <span className="text-muted"> · cards, Apple Pay, Google Pay, or pay over time with Klarna, Afterpay &amp; Affirm</span>
+        </div>
+        <PaymentBadges />
+      </div>
 
       <div className="flex flex-wrap gap-2">
         <Pill href={href({ brand: undefined })} active={!filters.brand}>

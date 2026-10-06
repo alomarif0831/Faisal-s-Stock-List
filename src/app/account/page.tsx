@@ -30,7 +30,7 @@ export default async function AccountPage({ searchParams }: PageProps<"/account"
     .orderBy(desc(orders.createdAt))
     .limit(50);
   const shippingDone = hasShipping(customer);
-  const ready = shippingDone && customer.hasPaymentMethod;
+  const ready = shippingDone;
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -40,7 +40,10 @@ export default async function AccountPage({ searchParams }: PageProps<"/account"
       </div>
 
       {first(sp.welcome) && (
-        <Notice>Welcome! Add your shipping address and a card, then you can request any item.</Notice>
+        <Notice>
+          Welcome! Add your shipping address and you can request any item. Saving a card is optional: it lets us
+          charge automatically once your item is confirmed.
+        </Notice>
       )}
       {first(sp.saved) && <Notice>Saved.</Notice>}
       {first(sp.card) === "cancelled" && <Notice>No card was added.</Notice>}
@@ -82,7 +85,9 @@ export default async function AccountPage({ searchParams }: PageProps<"/account"
           {customer.hasPaymentMethod && <span className="text-xs text-good">✓ Saved</span>}
         </div>
         <p className="mt-1 text-sm text-muted">
-          Your card is stored securely by Stripe. It&apos;s only charged after we confirm your item is available.
+          Optional. A saved card is stored securely by Stripe and charged automatically once we confirm your item.
+          Prefer Apple Pay, Google Pay, Klarna, Afterpay or Affirm? Choose &ldquo;Pay at checkout&rdquo; when you
+          request an item.
         </p>
         {customer.hasPaymentMethod && (
           <p className="mt-3 text-sm font-medium capitalize">
@@ -106,7 +111,7 @@ export default async function AccountPage({ searchParams }: PageProps<"/account"
           {shippingDone && <span className="text-xs text-good">✓ Complete</span>}
         </div>
         <form action={saveProfile} className="mt-4 grid gap-3 sm:grid-cols-2">
-          {next && <input type="hidden" name="next" value={customer.hasPaymentMethod ? next : `/account?next=${next}`} />}
+          {next && <input type="hidden" name="next" value={next} />}
           <Field name="fullName" label="Full name" value={customer.fullName} required />
           <Field name="phone" label="Phone (for delivery updates)" value={customer.phone} type="tel" />
           <Field name="shipName" label="Ship to (name)" value={customer.shipName ?? customer.fullName} required wide />

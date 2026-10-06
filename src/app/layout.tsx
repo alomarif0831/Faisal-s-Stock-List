@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Geist, Geist_Mono } from "next/font/google";
+import { PaymentBadges } from "@/components/payment-badges";
 import { SiteHeader } from "@/components/site-header";
 import { clerkConfigured } from "@/lib/auth";
 import { CLERK_PROXY_PATH, clerkProxyEnabled } from "@/lib/clerk-proxy";
@@ -21,8 +22,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="flex min-h-full flex-col font-sans">
         <SiteHeader />
         <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6">{children}</main>
-        <footer className="border-t border-line py-6 text-center text-xs text-muted">
-          {SITE_NAME} · Prices in USD · Every order is confirmed with you before your card is charged.
+        <footer className="space-y-3 border-t border-line px-4 py-6 text-center text-xs text-muted">
+          <PaymentBadges className="justify-center" />
+          <p>{SITE_NAME} · Prices in USD · Every order is confirmed before you&apos;re charged.</p>
         </footer>
       </body>
     </html>

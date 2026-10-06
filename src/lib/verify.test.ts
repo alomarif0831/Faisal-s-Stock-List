@@ -20,6 +20,9 @@ const charges: number[] = [];
 vi.mock("@/lib/stripe", () => ({
   ensureStripeCustomer: async () => "cus_test",
   getStripe: () => ({
+    checkout: {
+      sessions: { create: async () => ({ id: "cs_test", url: "https://checkout.stripe.test/cs_test" }) },
+    },
     paymentIntents: {
       create: async (p: { amount: number }) => {
         charges.push(p.amount);
@@ -54,7 +57,7 @@ describe.skipIf(!DB_URL)("automatic seller verification", () => {
   });
 
   let n = 0;
-  async function setup(quantity = 1) {
+  async function setup(quantity = 1, paymentChoice: "saved_card" | "checkout" = "saved_card") {
     sent.length = 0;
     charges.length = 0;
     readReply.mockReset();
@@ -98,7 +101,7 @@ describe.skipIf(!DB_URL)("automatic seller verification", () => {
         hasPaymentMethod: true,
       })
       .returning();
-    const order = await orders.createOrderRequest(customer, listing.id, quantity, null);
+    const order = await orders.createOrderRequest(customer, listing.id, quantity, null, paymentChoice);
     await verify.startVerification(order.id);
     return { listing, order };
   }
@@ -215,5 +218,18 @@ describe.skipIf(!DB_URL)("automatic seller verification", () => {
         raw: {},
       }),
     ).toBe(false);
+  });
+
+  it("pay-at-checkout orders get a Pay link instead of an automatic charge", async () => {
+    const { order } = await setup(1, "checkout");
+    expect(order.paymentChoice).toBe("checkout");
+    readReply.mockResolvedValueOnce([answer({})]);
+    await sellerSays("yes available");
+    expect(charges).toEqual([]); // saved card NOT charged
+    expect(await getOrder(order.id)).toMatchObject({
+      status: "awaiting_payment",
+      verifyStatus: "confirmed",
+      checkoutUrl: "https://checkout.stripe.test/cs_test",
+    });
   });
 });

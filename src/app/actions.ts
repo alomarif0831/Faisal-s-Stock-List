@@ -46,7 +46,9 @@ export async function addCard(fd: FormData) {
 export async function requestToBuy(fd: FormData) {
   const listingId = String(fd.get("listingId") ?? "");
   const c = await requireCustomer(`/listing/${listingId}`);
-  if (!hasShipping(c) || !c.hasPaymentMethod) {
+  const paymentChoice = fd.get("payment") === "checkout" ? "checkout" : "saved_card";
+  // A shipping address is always needed; a saved card only for auto-charge.
+  if (!hasShipping(c) || (paymentChoice === "saved_card" && !c.hasPaymentMethod)) {
     redirect(`/account?next=${encodeURIComponent(`/listing/${listingId}`)}`);
   }
   const order = await createOrderRequest(
@@ -54,6 +56,7 @@ export async function requestToBuy(fd: FormData) {
     listingId,
     Number(fd.get("quantity") ?? 1) || 1,
     field(fd, "note", 500),
+    paymentChoice,
   );
   // Ask the seller right away; the buyer's page shows progress.
   await startVerification(order.id).catch((err) => console.error("[verify]", err));

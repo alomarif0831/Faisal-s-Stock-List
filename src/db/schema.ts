@@ -136,6 +136,8 @@ export type ShippingAddress = {
   phone: string | null;
 };
 
+export type PaymentChoice = "saved_card" | "checkout";
+
 export const ORDER_STATUSES = [
   "requested", // buyer asked; waiting on you (manual check, or bot unsure)
   "verifying", // bot DM'd the seller and is waiting for their reply
@@ -167,6 +169,10 @@ export const orders = pgTable(
     sourcePriceCents: integer("source_price_cents").notNull(),
     shipping: jsonb("shipping").$type<ShippingAddress>().notNull(),
     buyerNote: text("buyer_note"),
+    // saved_card: charged automatically once confirmed.
+    // checkout: buyer pays through a Stripe Checkout link (Apple Pay,
+    // Google Pay, Klarna, Afterpay, Affirm, Amazon Pay, Cash App, cards).
+    paymentChoice: text("payment_choice").$type<PaymentChoice>().notNull().default("saved_card"),
     status: text("status").$type<OrderStatus>().notNull().default("requested"),
     paymentIntentId: text("payment_intent_id"),
     paymentError: text("payment_error"),

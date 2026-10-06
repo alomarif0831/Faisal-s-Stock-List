@@ -1,0 +1,1 @@
+ALTER TABLE "orders" ADD COLUMN "payment_choice" text DEFAULT 'saved_card' NOT NULL;
