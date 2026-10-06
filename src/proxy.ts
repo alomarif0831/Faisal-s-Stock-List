@@ -27,5 +27,9 @@ export const config = {
   matcher: [
     "/((?!_next|api/images|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|webmanifest)).*)",
     "/(api|trpc)(.*)",
+    // Clerk's Frontend API proxy (production keys on *.vercel.app route
+    // through it). Listed explicitly because its script URLs end in .js,
+    // which the static-file exclusion above would otherwise skip.
+    "/__clerk/(.*)",
   ],
 };
