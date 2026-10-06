@@ -3,6 +3,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { Geist, Geist_Mono } from "next/font/google";
 import { SiteHeader } from "@/components/site-header";
 import { clerkConfigured } from "@/lib/auth";
+import { CLERK_PROXY_PATH, clerkProxyEnabled } from "@/lib/clerk-proxy";
 import { SITE_NAME } from "@/lib/config";
 import "./globals.css";
 
@@ -26,5 +27,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       </body>
     </html>
   );
-  return clerkConfigured() ? <ClerkProvider>{page}</ClerkProvider> : page;
+  if (!clerkConfigured()) return page;
+  return <ClerkProvider proxyUrl={clerkProxyEnabled() ? CLERK_PROXY_PATH : undefined}>{page}</ClerkProvider>;
 }

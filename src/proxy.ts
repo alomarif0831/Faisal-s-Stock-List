@@ -1,5 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
+import { clerkProxyEnabled } from "@/lib/clerk-proxy";
 
 // Only account and admin pages need a session; the catalog is public, and
 // the WhatsApp/Stripe webhooks authenticate themselves.
@@ -8,9 +9,18 @@ const isProtected = createRouteMatcher(["/account(.*)", "/admin(.*)"]);
 const clerkConfigured =
   !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && !!process.env.CLERK_SECRET_KEY;
 
-const withClerk = clerkMiddleware(async (auth, req) => {
-  if (isProtected(req)) await auth.protect();
-});
+// Production (pk_live_) keys on a *.vercel.app domain can't use Clerk's
+// DNS records, so Clerk is reached through /__clerk on this app instead.
+// Enabled explicitly rather than relying on Clerk's auto-detection, which
+// depends on Vercel system env vars being exposed.
+const useClerkProxy = clerkProxyEnabled();
+
+const withClerk = clerkMiddleware(
+  async (auth, req) => {
+    if (isProtected(req)) await auth.protect();
+  },
+  useClerkProxy ? { frontendApiProxy: { enabled: true } } : {},
+);
 
 export function proxy(req: NextRequest, ev: NextFetchEvent) {
   if (!clerkConfigured) {
