@@ -1,7 +1,10 @@
-import { and, asc, desc, eq, gte, inArray, ne, sql } from "drizzle-orm";
+import { createHash } from "node:crypto";
+import { and, asc, desc, eq, gte, inArray, like, ne, sql } from "drizzle-orm";
 import { db, images, listings, waMessages } from "@/db";
 import { extractListings, type ExtractedItem } from "@/lib/ai/extract";
-import { normalizeKey } from "@/lib/catalog";
+import { dedupeKeyFor } from "@/lib/catalog";
+
+export { dedupeKeyFor };
 import { allowedGroups, MARKUP_CENTS, PAIRING_WINDOW_MS } from "@/lib/config";
 import { handleSellerReplies, hasOpenVerification } from "@/lib/verify";
 import { downloadImage, fetchGroupName, isGroupChat, type IncomingMessage } from "./whapi";
@@ -75,14 +78,18 @@ export async function processAfterQuietPeriod(messageId: string, waitMs = DEBOUN
   if (waitMs > 0) await sleep(waitMs);
   const [msg] = await db.select().from(waMessages).where(eq(waMessages.id, messageId));
   if (!msg || msg.status !== "pending") return;
+  const group = isGroupChat(msg.chatId);
 
+  // Only the seller's newest message does the work. For group posts that
+  // spans every group, so a post cross-posted to all 4 groups becomes one
+  // AI call instead of 4 racing ones.
   const [newer] = await db
     .select({ id: waMessages.id })
     .from(waMessages)
     .where(
       and(
-        eq(waMessages.chatId, msg.chatId),
         eq(waMessages.senderId, msg.senderId),
+        group ? like(waMessages.chatId, "%@g.us") : eq(waMessages.chatId, msg.chatId),
         ne(waMessages.id, msg.id),
         // Compare inside Postgres: timestamps there have microsecond
         // precision, JS Dates only milliseconds.
@@ -92,19 +99,22 @@ export async function processAfterQuietPeriod(messageId: string, waitMs = DEBOUN
     .limit(1);
   if (newer) return; // the newer message will process this burst
 
-  if (isGroupChat(msg.chatId)) await processBurst(msg.chatId, msg.senderId);
+  if (group) await processBurst(msg.senderId);
   else await handleSellerReplies(msg.chatId, msg.senderId);
 }
 
-/** Turn every pending message from one seller in one group into listings. */
-export async function processBurst(chatId: string, senderId: string): Promise<void> {
+const normalizeText = (t: string) => t.replace(/\s+/g, " ").trim().toLowerCase();
+const sha256 = (data: Buffer) => createHash("sha256").update(data).digest("hex");
+
+/** Turn every pending group message from one seller (in any group) into listings. */
+export async function processBurst(senderId: string): Promise<void> {
   const since = new Date(Date.now() - PAIRING_WINDOW_MS);
   const pending = await db
     .select()
     .from(waMessages)
     .where(
       and(
-        eq(waMessages.chatId, chatId),
+        like(waMessages.chatId, "%@g.us"),
         eq(waMessages.senderId, senderId),
         eq(waMessages.status, "pending"),
         gte(waMessages.createdAt, since),
@@ -113,7 +123,16 @@ export async function processBurst(chatId: string, senderId: string): Promise<vo
     .orderBy(asc(waMessages.sentAt));
   if (!pending.length) return;
 
-  let texts = pending.map((m) => m.text?.trim()).filter((t): t is string => Boolean(t));
+  // The same post copied into several groups: read it once.
+  const seenText = new Set<string>();
+  let texts: string[] = [];
+  for (const t of pending.map((m) => m.text?.trim()).filter((t): t is string => Boolean(t))) {
+    const key = normalizeText(t);
+    if (!seenText.has(key)) {
+      seenText.add(key);
+      texts.push(t);
+    }
+  }
   const imageIds = pending.map((m) => m.imageId).filter((id): id is string => Boolean(id));
 
   // Photos that arrive after their price text was already processed:
@@ -125,7 +144,7 @@ export async function processBurst(chatId: string, senderId: string): Promise<vo
       .from(waMessages)
       .where(
         and(
-          eq(waMessages.chatId, chatId),
+          like(waMessages.chatId, "%@g.us"),
           eq(waMessages.senderId, senderId),
           eq(waMessages.status, "done"),
           gte(waMessages.createdAt, since),
@@ -141,32 +160,54 @@ export async function processBurst(chatId: string, senderId: string): Promise<vo
   const imgRows = imageIds.length
     ? await db.select().from(images).where(inArray(images.id, imageIds))
     : [];
-  // keep the order the photos were posted in
+  // Keep the order the photos were posted in, and drop byte-identical
+  // copies (the same photo cross-posted to several groups).
+  const seenImage = new Set<string>();
   const orderedImages = imageIds
     .map((id) => imgRows.find((r) => r.id === id))
-    .filter((r): r is NonNullable<typeof r> => Boolean(r))
+    .filter((r): r is NonNullable<typeof r> => {
+      if (!r) return false;
+      const h = sha256(r.data);
+      if (seenImage.has(h)) return false;
+      seenImage.add(h);
+      return true;
+    })
     .slice(0, 20);
+
+  // What this seller already has listed, so a repost is matched to its
+  // listing even when it's worded differently.
+  const existing = await db
+    .select({ id: listings.id, title: listings.title, condition: listings.condition, price: listings.sourcePriceCents })
+    .from(listings)
+    .where(and(eq(listings.sellerId, senderId), ne(listings.status, "sold")))
+    .orderBy(desc(listings.lastSeenAt))
+    .limit(60);
 
   try {
     const result = await extractListings({
       text: texts.join("\n\n") || null,
       images: orderedImages.map((r) => ({ mimeType: r.mimeType, data: r.data })),
+      existing: existing.map((e) => ({ id: e.id, title: e.title, condition: e.condition, price: e.price / 100 })),
     });
     if (!result.is_sale_post) {
       await db.update(waMessages).set({ status: "ignored" }).where(inArray(waMessages.id, ids));
       return;
     }
     const last = pending[pending.length - 1];
+    const existingIds = new Set(existing.map((e) => e.id));
+    const touched = new Set<string>();
     for (const item of result.items) {
-      await upsertListing(item, {
-        chatId,
+      // Two items in one post that resolve to the same listing: keep the first.
+      const id = await upsertListing(item, {
+        chatId: last.chatId,
         chatName: last.chatName,
         sellerId: senderId,
         sellerName: last.senderName,
         sourceMessageId: last.id,
         rawText: texts.join("\n\n"),
         imageIds: item.image_indexes.map((i) => orderedImages[i]?.id).filter(Boolean) as string[],
-      });
+      }, existingIds, touched);
+      touched.add(id);
     }
     await db.update(waMessages).set({ status: "done", error: null }).where(inArray(waMessages.id, ids));
   } catch (err) {
@@ -188,10 +229,6 @@ type Source = {
   imageIds: string[];
 };
 
-export function dedupeKeyFor(item: ExtractedItem): string {
-  return normalizeKey(item.brand, item.model ?? item.title, item.storage, item.color, item.condition);
-}
-
 export function priceFields(unitPrice: number) {
   const sourcePriceCents = Math.round(unitPrice * 100);
   return {
@@ -201,7 +238,13 @@ export function priceFields(unitPrice: number) {
   };
 }
 
-async function upsertListing(item: ExtractedItem, src: Source): Promise<void> {
+/** Insert or update one listing; returns its id. */
+async function upsertListing(
+  item: ExtractedItem,
+  src: Source,
+  sellersListingIds: Set<string>,
+  alreadyTouched: Set<string>,
+): Promise<string> {
   const dedupeKey = dedupeKeyFor(item);
   const product = {
     title: item.title,
@@ -217,26 +260,42 @@ async function upsertListing(item: ExtractedItem, src: Source): Promise<void> {
     ...priceFields(item.unit_price),
   };
   const now = new Date();
+  const refresh = (existingImages: string[]) => ({
+    ...product,
+    imageIds: src.imageIds.length ? src.imageIds : existingImages,
+    chatId: src.chatId,
+    chatName: src.chatName,
+    sellerName: src.sellerName,
+    sourceMessageId: src.sourceMessageId,
+    rawText: src.rawText,
+    lastSeenAt: now,
+    updatedAt: now,
+  });
 
-  const [existing] = await db
-    .select({ id: listings.id, imageIds: listings.imageIds })
-    .from(listings)
-    .where(
-      and(
-        eq(listings.sellerId, src.sellerId),
-        eq(listings.dedupeKey, dedupeKey),
-        ne(listings.status, "sold"),
-      ),
-    )
-    .orderBy(desc(listings.lastSeenAt))
-    .limit(1);
+  // 1. Claude matched it to one of this seller's existing listings.
+  const matchId = item.existing_listing_id;
+  if (matchId && sellersListingIds.has(matchId) && !alreadyTouched.has(matchId)) {
+    const [row] = await db.select({ imageIds: listings.imageIds }).from(listings).where(eq(listings.id, matchId));
+    if (row) {
+      // Keep the row's own dedupe key: rewriting it could collide with
+      // another listing of the same seller.
+      await db.update(listings).set(refresh(row.imageIds)).where(eq(listings.id, matchId));
+      return matchId;
+    }
+  }
 
-  if (existing) {
-    await db
-      .update(listings)
-      .set({
+  // 2. Same seller + same product key. The unique index makes this atomic,
+  //    so two posts processed at the same moment can't both insert.
+  const [row] = await db
+    .insert(listings)
+    .values({ ...product, ...src, dedupeKey, lastSeenAt: now })
+    .onConflictDoUpdate({
+      target: [listings.sellerId, listings.dedupeKey],
+      targetWhere: sql`${listings.status} <> 'sold'`,
+      set: {
         ...product,
-        imageIds: src.imageIds.length ? src.imageIds : existing.imageIds,
+        // keep the old photos when this post has none
+        imageIds: src.imageIds.length ? src.imageIds : sql`${listings.imageIds}`,
         chatId: src.chatId,
         chatName: src.chatName,
         sellerName: src.sellerName,
@@ -244,10 +303,8 @@ async function upsertListing(item: ExtractedItem, src: Source): Promise<void> {
         rawText: src.rawText,
         lastSeenAt: now,
         updatedAt: now,
-      })
-      .where(eq(listings.id, existing.id));
-    return;
-  }
-
-  await db.insert(listings).values({ ...product, ...src, dedupeKey, lastSeenAt: now });
+      },
+    })
+    .returning({ id: listings.id });
+  return row.id;
 }

@@ -10,6 +10,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 const bytea = customType<{ data: Buffer; driverData: Buffer }>({
   dataType: () => "bytea",
@@ -87,7 +88,11 @@ export const listings = pgTable(
   },
   (t) => [
     index("listings_catalog_idx").on(t.status, t.lastSeenAt),
-    index("listings_dedupe_idx").on(t.sellerId, t.dedupeKey),
+    // One live listing per seller per product. Sold listings are excluded
+    // so a seller restocking an item they sold out of starts a new listing.
+    uniqueIndex("listings_seller_product_uniq")
+      .on(t.sellerId, t.dedupeKey)
+      .where(sql`${t.status} <> 'sold'`),
   ],
 );
 

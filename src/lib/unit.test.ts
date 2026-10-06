@@ -17,6 +17,7 @@ const item = {
   unit_price: 1015,
   currency: "usd",
   image_indexes: [],
+  existing_listing_id: null,
 };
 
 describe("parseWebhook", () => {
@@ -96,8 +97,18 @@ describe("pricing", () => {
 
 describe("helpers", () => {
   it("builds a stable dedupe key", () => {
-    expect(dedupeKeyFor(item)).toBe(dedupeKeyFor({ ...item, unit_price: 990, quantity: 1, title: "x" }));
+    expect(dedupeKeyFor(item)).toBe(dedupeKeyFor({ ...item, title: "x" }));
     expect(dedupeKeyFor(item)).not.toBe(dedupeKeyFor({ ...item, storage: "512GB" }));
+  });
+  it("normalises wording differences in the product key", () => {
+    const base = { brand: "Apple", model: "iPhone 16 Pro", title: "", storage: "1TB", color: "Natural Titanium", condition: "Used" };
+    const key = dedupeKeyFor(base);
+    expect(dedupeKeyFor({ ...base, model: "Apple iPhone 16 Pro" })).toBe(key);
+    expect(dedupeKeyFor({ ...base, storage: "1 TB" })).toBe(key);
+    expect(dedupeKeyFor({ ...base, storage: "1024GB" })).toBe(key);
+    expect(dedupeKeyFor({ ...base, color: "natural" })).toBe(key);
+    expect(dedupeKeyFor({ ...base, color: "Black Titanium" })).not.toBe(key);
+    expect(dedupeKeyFor({ ...base, condition: "New sealed" })).not.toBe(key);
   });
   it("extracts phone numbers", () => {
     expect(phoneFromJid("15551234567@s.whatsapp.net")).toBe("+15551234567");

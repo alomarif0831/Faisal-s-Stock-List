@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, count, desc, eq, gte, ilike, or, type SQL } from "drizzle-orm";
+import { and, asc, countDistinct, desc, eq, gte, ilike, or, type SQL } from "drizzle-orm";
 import { db, listings } from "@/db";
 import { LISTING_TTL_DAYS } from "@/lib/config";
 
@@ -48,25 +48,37 @@ export async function searchCatalog(f: CatalogFilters) {
     const like = `%${word.replace(/[%_\\]/g, "\\$&")}%`;
     where.push(or(ilike(listings.title, like), ilike(listings.details, like), ilike(listings.color, like))!);
   }
-  const order =
-    f.sort === "price_asc"
-      ? [asc(listings.salePriceCents)]
-      : f.sort === "price_desc"
-        ? [desc(listings.salePriceCents)]
-        : [desc(listings.lastSeenAt)];
-
-  return db
-    .select(publicColumns)
+  // Several sellers can offer the same product: show it once, at the
+  // cheapest offer. (Admins still see every seller's listing.)
+  const cheapest = db
+    .selectDistinctOn([listings.dedupeKey], publicColumns)
     .from(listings)
     .where(and(...where))
-    .orderBy(...order)
-    .limit(240);
+    .orderBy(listings.dedupeKey, asc(listings.salePriceCents), desc(listings.lastSeenAt))
+    .as("cheapest");
+
+  const order =
+    f.sort === "price_asc"
+      ? [asc(cheapest.salePriceCents)]
+      : f.sort === "price_desc"
+        ? [desc(cheapest.salePriceCents)]
+        : [desc(cheapest.lastSeenAt)];
+
+  return db.select().from(cheapest).orderBy(...order).limit(240);
 }
 
 export async function facetCounts() {
   const [brands, categories] = await Promise.all([
-    db.select({ value: listings.brand, n: count() }).from(listings).where(visible()).groupBy(listings.brand),
-    db.select({ value: listings.category, n: count() }).from(listings).where(visible()).groupBy(listings.category),
+    db
+      .select({ value: listings.brand, n: countDistinct(listings.dedupeKey) })
+      .from(listings)
+      .where(visible())
+      .groupBy(listings.brand),
+    db
+      .select({ value: listings.category, n: countDistinct(listings.dedupeKey) })
+      .from(listings)
+      .where(visible())
+      .groupBy(listings.category),
   ]);
   return { brands, categories };
 }
