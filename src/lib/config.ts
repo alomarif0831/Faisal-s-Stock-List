@@ -10,7 +10,7 @@ export const LISTING_TTL_DAYS = Number(process.env.LISTING_TTL_DAYS ?? "7");
 // we stop trying to pair them.
 export const PAIRING_WINDOW_MS = 5 * 60 * 1000;
 
-export const SITE_NAME = process.env.NEXT_PUBLIC_SITE_NAME ?? "Faisal's Stock List";
+export const SITE_NAME = process.env.NEXT_PUBLIC_SITE_NAME ?? "Onyx Stock List";
 
 export function adminEmails(): string[] {
   return (process.env.ADMIN_EMAILS ?? "")

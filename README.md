@@ -1,4 +1,4 @@
-# Faisal's Stock List
+# Onyx Stock List
 
 A WhatsApp bot plus a storefront, both running on Vercel.
 
