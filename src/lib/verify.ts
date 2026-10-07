@@ -144,9 +144,18 @@ export async function handleSellerReplies(chatId: string, senderId: string): Pro
       notes: null,
       summary: "Seller's reply didn't mention this item",
     };
-    await applyAnswer(order, listing, answer, reply);
+    // One order failing must not leave the seller's reply unprocessed.
+    try {
+      await applyAnswer(order, listing, answer, reply);
+    } catch (err) {
+      console.error("[verify] applying seller reply failed", err);
+      await db
+        .update(waMessages)
+        .set({ error: `order ${order.id}: ${(err as Error).message}`.slice(0, 500) })
+        .where(inArray(waMessages.id, ids));
+    }
   }
-  await db.update(waMessages).set({ status: "done", error: null }).where(inArray(waMessages.id, ids));
+  await db.update(waMessages).set({ status: "done" }).where(inArray(waMessages.id, ids));
 }
 
 async function recordReply(order: Order, reply: string, verifyStatus: string, summary: string) {
@@ -262,7 +271,7 @@ async function applyAnswer(order: Order, listing: Listing, a: SellerAnswer, repl
     await notifyAdmin(`Seller confirmed ${listing.title}. Ready to charge: ${appUrl("/admin/orders")}`);
     return;
   }
-  const result = await confirmAndCharge(order.id);
+  const result = await safeCharge(order.id);
   await notifyAdmin(
     result.ok
       ? `Seller confirmed ${listing.title} and the buyer was charged ${formatMoney(d.unitPriceCents * order.quantity)}. Buy it from ${listing.sellerName ?? "the seller"} and ship: ${appUrl("/admin/orders")}`
@@ -270,7 +279,7 @@ async function applyAnswer(order: Order, listing: Listing, a: SellerAnswer, repl
   );
   if (result.ok) {
     await notifyBuyer(buyer?.phone ?? null, `${SITE_NAME}: good news, your ${listing.title} is confirmed and paid. We'll send tracking soon. ${orderUrl}`);
-  } else {
+  } else if (result.payLink) {
     await notifyBuyer(buyer?.phone ?? null, `${SITE_NAME}: your ${listing.title} is available. Please complete payment: ${orderUrl}`);
   }
 }
@@ -294,7 +303,7 @@ export async function acceptChange(order: Order): Promise<void> {
     })
     .where(and(eq(orders.id, order.id), eq(orders.status, "needs_buyer_approval")));
   if (autoChargeEnabled()) {
-    const result = await confirmAndCharge(order.id);
+    const result = await safeCharge(order.id);
     await notifyAdmin(
       result.ok
         ? `Buyer accepted the new terms for ${order.title} and was charged. Buy it and ship: ${appUrl("/admin/orders")}`
@@ -302,5 +311,30 @@ export async function acceptChange(order: Order): Promise<void> {
     );
   } else {
     await notifyAdmin(`Buyer accepted the new terms for ${order.title}. Ready to charge: ${appUrl("/admin/orders")}`);
+  }
+}
+
+/**
+ * confirmAndCharge that never throws. If payments can't run (e.g. Stripe
+ * isn't configured, or Stripe is down) the order goes back to the admin
+ * as "requested" with the reason, instead of being left half-processed.
+ */
+async function safeCharge(orderId: string): Promise<{ ok: boolean; reason?: string; payLink: boolean }> {
+  try {
+    const result = await confirmAndCharge(orderId);
+    if (result.ok) return { ok: true, payLink: false };
+    const [o] = await db.select({ checkoutUrl: orders.checkoutUrl }).from(orders).where(eq(orders.id, orderId));
+    return { ok: false, reason: result.reason, payLink: Boolean(o?.checkoutUrl) };
+  } catch (err) {
+    const message = (err as Error).message;
+    const reason = message.includes("STRIPE_SECRET_KEY")
+      ? "Payments aren't set up yet (add STRIPE_SECRET_KEY in Vercel)."
+      : `Payment step failed: ${message}`;
+    console.error("[verify] charge failed", err);
+    await db
+      .update(orders)
+      .set({ status: "requested", paymentError: reason.slice(0, 300), updatedAt: new Date() })
+      .where(eq(orders.id, orderId));
+    return { ok: false, reason, payLink: false };
   }
 }

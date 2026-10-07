@@ -17,9 +17,12 @@ vi.mock("@/lib/whatsapp/whapi", async (orig) => ({
 const readReply = vi.fn();
 vi.mock("@/lib/ai/verify-reply", () => ({ readSellerReply: (...a: unknown[]) => readReply(...a) }));
 const charges: number[] = [];
+let stripeDown = false;
 vi.mock("@/lib/stripe", () => ({
   ensureStripeCustomer: async () => "cus_test",
-  getStripe: () => ({
+  getStripe: () => {
+    if (stripeDown) throw new Error("STRIPE_SECRET_KEY is not set. See .env.example.");
+    return {
     checkout: {
       sessions: { create: async () => ({ id: "cs_test", url: "https://checkout.stripe.test/cs_test" }) },
     },
@@ -29,7 +32,8 @@ vi.mock("@/lib/stripe", () => ({
         return { id: `pi_${charges.length}`, status: "succeeded" };
       },
     },
-  }),
+  };
+  },
 }));
 
 const SELLER = "15550002222";
@@ -254,5 +258,25 @@ describe.skipIf(!DB_URL)("automatic seller verification", () => {
     await verify.acceptChange(pending);
     expect(charges).toEqual([46000]);
     expect(await getOrder(order.id)).toMatchObject({ status: "paid", totalCents: 46000 });
+  });
+
+  it("if payments aren't set up, a confirmed order goes to the admin instead of getting stuck", async () => {
+    const { order } = await setup(1, "checkout");
+    stripeDown = true;
+    try {
+      readReply.mockResolvedValueOnce([answer({ summary: "Seller says still available" })]);
+      await sellerSays("Still available");
+    } finally {
+      stripeDown = false;
+    }
+    expect(await getOrder(order.id)).toMatchObject({
+      status: "requested",
+      verifyStatus: "confirmed",
+      sellerReply: "Still available",
+      paymentError: "Payments aren't set up yet (add STRIPE_SECRET_KEY in Vercel).",
+    });
+    // the seller's reply is marked handled, not left pending
+    const dms = await m.db.select().from(m.waMessages);
+    expect(dms.every((r) => r.status === "done")).toBe(true);
   });
 });
