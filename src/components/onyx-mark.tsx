@@ -1,5 +1,5 @@
 // The Onyx mark: a faceted onyx gemstone. Also used (as a static file) for
-// the favicon in src/app/icon.svg; keep the two in sync.
+// the favicon in src/app/icon1.svg; keep the two in sync.
 export function OnyxGem({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 64 64" className={className} aria-hidden="true">

@@ -5,7 +5,6 @@ const nextConfig: NextConfig = {
   // app's real icons instead of a 404.
   async rewrites() {
     return [
-      { source: "/favicon.ico", destination: "/icon.svg" },
       { source: "/apple-touch-icon.png", destination: "/apple-icon.png" },
       { source: "/apple-touch-icon-precomposed.png", destination: "/apple-icon.png" },
     ];
