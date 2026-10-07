@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { requestToBuy } from "@/app/actions";
 import { CHECKOUT_MARKS, PaymentBadges } from "@/components/payment-badges";
 import { ProductImage } from "@/components/product-image";
+import { SessionResync } from "@/components/session-resync";
 import { clerkConfigured, getCustomer, hasShipping } from "@/lib/auth";
 import { formatPrice, timeAgo } from "@/lib/format";
 import { getPublicListing } from "@/lib/listings";
@@ -94,9 +95,12 @@ export default async function ListingPage({ params }: PageProps<"/listing/[id]">
             {!clerkConfigured() ? (
               <p className="text-sm text-muted">Ordering opens soon.</p>
             ) : !customer ? (
-              <Link href={`/sign-in?redirect_url=/listing/${listing.id}`} className="btn-primary w-full">
-                Sign in to request
-              </Link>
+              <>
+                <SessionResync />
+                <Link href={`/sign-in?redirect_url=/listing/${listing.id}`} className="btn-primary w-full">
+                  Sign in to request
+                </Link>
+              </>
             ) : !ready ? (
               <Link href={`/account?next=/listing/${listing.id}`} className="btn-primary w-full">
                 Add your shipping address to request
