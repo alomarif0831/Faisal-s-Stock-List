@@ -2,15 +2,12 @@
 
 A WhatsApp bot plus a storefront, both running on Vercel.
 
-1. **Capture.** The bot sits in your reseller WhatsApp groups. When someone posts stock with prices (text, photos, or both), Claude reads it and creates listings with brand, model, storage, color, condition, quantity and price. Each listing's sale price is the seller's price **+ $10**.
-2. **Storefront.** Listings appear on the website, organised by brand and category, with search, filters and photos. Buyers never see who the seller is, which group the item came from, or the seller's price.
-3. **Accounts.** Buyers sign up (Clerk), add a shipping address, and save a card (Stripe).
-4. **Order and verify.** When a buyer requests an item, the bot DMs the original seller with their post and photo and asks if it's still available and whether anything has changed. Claude reads the reply:
-   - **Available, same or lower price:** the buyer's saved card is charged automatically.
-   - **Price went up, fewer units, or the condition changed:** the listing is updated and the buyer is asked to accept or cancel.
-   - **Sold out:** the order is cancelled (never charged) and the listing comes down.
-   - **Unclear reply, or no reply:** it's flagged for you on the admin page.
-5. **Fulfil.** You buy from the seller, ship to the buyer, and enter tracking. You get WhatsApp alerts along the way.
+1. **Capture.** The bot reads your reseller WhatsApp groups. When someone posts stock (text, photos or both), Claude turns it into listings: brand, model, storage, color, condition, quantity and price, **exactly as posted** (no markup by default; set `MARKUP_DOLLARS` to add one).
+2. **Directory.** Everything appears on the website, organised by brand and category with search and filters. Each listing shows the seller, the group it came from and the original post, plus a **Message seller on WhatsApp** button. Deals happen directly between buyer and seller.
+3. **Stays fresh.** Reposts update the existing listing instead of duplicating it, "sold" messages take items down, and anything not re-posted within `LISTING_TTL_DAYS` drops off.
+4. **Opt-out.** Admin → Listings → **Remove seller** hides a seller's listings and stops listing their future posts.
+
+> The earlier ordering flow (accounts, Stripe payments, automatic seller verification) is still in the code but no longer shown on the public site.
 
 ## How it fits together
 

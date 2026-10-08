@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Geist, Geist_Mono } from "next/font/google";
 import { headers } from "next/headers";
-import { PaymentBadges } from "@/components/payment-badges";
 import { SiteHeader } from "@/components/site-header";
 import { clerkConfigured } from "@/lib/auth";
 import { CLERK_PROXY_PATH, clerkProxyEnabled } from "@/lib/clerk-proxy";
@@ -14,7 +13,8 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 
 export const metadata: Metadata = {
   title: { default: SITE_NAME, template: `%s · ${SITE_NAME}` },
-  description: "Phones, tablets, laptops and more from Apple, Samsung and other brands, in stock now.",
+  description:
+    "Live stock from WhatsApp reseller groups: phones, tablets, laptops and more. Message sellers directly.",
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
@@ -23,9 +23,12 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       <body className="flex min-h-full flex-col font-sans">
         <SiteHeader />
         <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6">{children}</main>
-        <footer className="space-y-3 border-t border-line px-4 py-6 text-center text-xs text-muted">
-          <PaymentBadges className="justify-center" />
-          <p>{SITE_NAME} · Prices in USD · Every order is confirmed before you&apos;re charged.</p>
+        <footer className="space-y-1 border-t border-line px-4 py-6 text-center text-xs text-muted">
+          <p>
+            {SITE_NAME} lists stock posted in WhatsApp reseller groups. Prices are as posted, in USD. Deals are
+            between you and the seller.
+          </p>
+          <p>Seller and want your posts removed? Message the group admin.</p>
         </footer>
       </body>
     </html>

@@ -1,6 +1,7 @@
 // Business knobs, all overridable from the environment.
 
-export const MARKUP_CENTS = Math.round(Number(process.env.MARKUP_DOLLARS ?? "10") * 100);
+// Prices are shown exactly as sellers posted them. (Set MARKUP_DOLLARS to add one.)
+export const MARKUP_CENTS = Math.round(Number(process.env.MARKUP_DOLLARS ?? "0") * 100);
 
 // A listing drops off the public catalog if the seller hasn't re-posted
 // it in this many days (stock in these groups moves fast).

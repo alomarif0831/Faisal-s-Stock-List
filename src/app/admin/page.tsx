@@ -1,9 +1,9 @@
 import { and, count, desc, eq, ilike, or, type SQL } from "drizzle-orm";
 import Link from "next/link";
 import { ProductImage } from "@/components/product-image";
-import { db, listings } from "@/db";
+import { db, hiddenSellers, listings } from "@/db";
 import { formatMoney, phoneFromJid, timeAgo } from "@/lib/format";
-import { deleteListing, setListingStatus, updateListing } from "./actions";
+import { deleteListing, hideSeller, setListingStatus, unhideSeller, updateListing } from "./actions";
 
 const STATUSES = ["active", "hidden", "sold"] as const;
 
@@ -17,9 +17,10 @@ export default async function AdminListings({ searchParams }: PageProps<"/admin"
     const like = `%${q.replace(/[%_\\]/g, "\\$&")}%`;
     where.push(or(ilike(listings.title, like), ilike(listings.sellerName, like), ilike(listings.chatName, like))!);
   }
-  const [rows, counts] = await Promise.all([
+  const [rows, counts, removed] = await Promise.all([
     db.select().from(listings).where(and(...where)).orderBy(desc(listings.lastSeenAt)).limit(200),
     db.select({ status: listings.status, n: count() }).from(listings).groupBy(listings.status),
+    db.select().from(hiddenSellers).orderBy(desc(hiddenSellers.createdAt)),
   ]);
 
   return (
@@ -39,9 +40,28 @@ export default async function AdminListings({ searchParams }: PageProps<"/admin"
           <input name="q" defaultValue={q} placeholder="Search title, seller, group" className="input w-64" />
         </form>
       </div>
+      {removed.length > 0 && (
+        <details className="card p-3 text-sm">
+          <summary className="cursor-pointer font-medium">Removed sellers ({removed.length})</summary>
+          <ul className="mt-2 space-y-1">
+            {removed.map((r) => (
+              <li key={r.sellerId} className="flex items-center justify-between gap-3">
+                <span>
+                  {r.sellerName ?? "Unknown"} <span className="text-xs text-muted">{r.sellerId}</span>
+                </span>
+                <form action={unhideSeller}>
+                  <input type="hidden" name="sellerId" value={r.sellerId} />
+                  <button className="btn-ghost">Allow again</button>
+                </form>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       <p className="text-xs text-muted">
-        Buyers see the sale price only. Seller, group and source price are visible to admins only. Active listings
-        drop off the storefront if the seller hasn&apos;t re-posted them within the listing TTL.
+        Everything here is public on the site except hidden and sold listings. &ldquo;Remove seller&rdquo; hides all of
+        a seller&apos;s listings and stops listing their future posts. Listings drop off if not re-posted within the
+        listing TTL.
       </p>
 
       <div className="space-y-2">
@@ -114,6 +134,13 @@ export default async function AdminListings({ searchParams }: PageProps<"/admin"
                     <button className="btn-ghost w-full capitalize">{s === "active" ? "Show" : s === "hidden" ? "Hide" : "Sold"}</button>
                   </form>
                 ))}
+                <form action={hideSeller}>
+                  <input type="hidden" name="sellerId" value={l.sellerId} />
+                  <input type="hidden" name="sellerName" value={l.sellerName ?? ""} />
+                  <button className="btn-danger w-full" title="Hide all their listings and stop listing their posts">
+                    Remove seller
+                  </button>
+                </form>
                 <form action={deleteListing}>
                   <input type="hidden" name="id" value={l.id} />
                   <button className="btn-danger w-full">Delete</button>

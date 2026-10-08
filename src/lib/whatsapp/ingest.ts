@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, gte, inArray, like, ne, sql } from "drizzle-orm";
-import { db, images, listings, waMessages } from "@/db";
+import { db, hiddenSellers, images, listings, waMessages } from "@/db";
 import { extractListings, type ExtractedItem } from "@/lib/ai/extract";
 import { dedupeKeyFor } from "@/lib/catalog";
 
@@ -123,6 +123,13 @@ export async function processBurst(senderId: string): Promise<void> {
     )
     .orderBy(asc(waMessages.sentAt));
   if (!pending.length) return;
+
+  // Seller opted out of the site: don't list them (and don't pay for an AI call).
+  const [optedOut] = await db.select().from(hiddenSellers).where(eq(hiddenSellers.sellerId, senderId));
+  if (optedOut) {
+    await db.update(waMessages).set({ status: "ignored" }).where(inArray(waMessages.id, pending.map((m) => m.id)));
+    return;
+  }
 
   // The same post copied into several groups: read it once.
   const seenText = new Set<string>();

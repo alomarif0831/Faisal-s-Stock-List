@@ -22,7 +22,17 @@ export function phoneFromJid(jid: string): string | null {
   return /^\d{7,15}$/.test(digits) ? `+${digits}` : null;
 }
 
-/** Storefront price, or "Ask for price" for listings posted without one. */
+/** Price as posted, or "Ask seller" for listings posted without one. */
 export function formatPrice(cents: number | null | undefined, currency = "USD"): string {
-  return cents ? formatMoney(cents, currency) : "Ask for price";
+  return cents ? formatMoney(cents, currency) : "Ask seller";
+}
+
+/**
+ * wa.me link to chat with a seller, or null when their WhatsApp id isn't a
+ * phone number (WhatsApp sometimes only exposes an anonymous id in groups).
+ */
+export function whatsappLink(sellerId: string, message?: string): string | null {
+  const digits = sellerId.split("@")[0].split(":")[0];
+  if (!/^\d{10,13}$/.test(digits)) return null;
+  return `https://wa.me/${digits}${message ? `?text=${encodeURIComponent(message)}` : ""}`;
 }

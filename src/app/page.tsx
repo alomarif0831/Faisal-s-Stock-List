@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { ListingCard } from "@/components/listing-card";
-import { PaymentBadges } from "@/components/payment-badges";
 import { BRANDS, CATEGORIES, CONDITIONS } from "@/lib/catalog";
 import { facetCounts, searchCatalog, type CatalogFilters } from "@/lib/listings";
 
@@ -14,6 +13,7 @@ export default async function CatalogPage({ searchParams }: PageProps<"/">) {
     category: first(sp.category),
     condition: first(sp.condition),
     sort: first(sp.sort),
+    seller: first(sp.seller),
   };
   const setupClerk = first(sp.setup) === "clerk";
 
@@ -53,29 +53,41 @@ export default async function CatalogPage({ searchParams }: PageProps<"/">) {
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">In stock now</h1>
           <p className="mt-1 text-sm text-muted">
-            {total} item{total === 1 ? "" : "s"} · updated as stock comes in
+            {total} item{total === 1 ? "" : "s"} · updated live as sellers post
           </p>
         </div>
         <form action="/" className="flex w-full gap-2 sm:w-auto">
           {filters.brand && <input type="hidden" name="brand" value={filters.brand} />}
+          {filters.seller && <input type="hidden" name="seller" value={filters.seller} />}
           {filters.category && <input type="hidden" name="category" value={filters.category} />}
           <input
             name="q"
             defaultValue={filters.q}
-            placeholder="Search: 16 Pro Max 256, S25 Ultra…"
+            placeholder="Search: 16 Pro Max 256, S25 Ultra, seller…"
             className="input sm:w-80"
           />
           <button className="btn-primary">Search</button>
         </form>
       </section>
 
-      <div className="card flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="text-sm">
-          <span className="font-medium">Pay your way</span>
-          <span className="text-muted"> · cards, Apple Pay, Google Pay, or pay over time with Klarna, Afterpay &amp; Affirm</span>
-        </div>
-        <PaymentBadges />
+      <div className="card px-4 py-3 text-sm">
+        <span className="font-medium">Live stock from our WhatsApp reseller groups.</span>
+        <span className="text-muted">
+          {" "}
+          Prices are exactly as posted. Tap any item to message the seller directly on WhatsApp.
+        </span>
       </div>
+
+      {filters.seller && (
+        <div className="flex items-center gap-3 text-sm">
+          <span>
+            Showing stock from <span className="font-semibold">{items[0]?.sellerName ?? "this seller"}</span>
+          </span>
+          <Link href={href({ seller: undefined })} className="text-accent underline">
+            Show everyone
+          </Link>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-2">
         <Pill href={href({ brand: undefined })} active={!filters.brand}>

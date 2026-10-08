@@ -43,6 +43,14 @@ export const waMessages = pgTable(
   (t) => [index("wa_messages_sender_idx").on(t.chatId, t.senderId, t.sentAt)],
 );
 
+// Sellers who asked not to be listed. Their posts are skipped (no AI call)
+// and their existing listings are hidden.
+export const hiddenSellers = pgTable("hidden_sellers", {
+  sellerId: text("seller_id").primaryKey(),
+  sellerName: text("seller_name"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const images = pgTable("images", {
   id: uuid("id").primaryKey().defaultRandom(),
   mimeType: text("mime_type").notNull(),

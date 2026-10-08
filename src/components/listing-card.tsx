@@ -21,6 +21,7 @@ export function ListingCard({ listing }: { listing: PublicListing }) {
           {listing.brand} · {listing.condition}
         </div>
         <div className="line-clamp-2 text-sm font-medium leading-snug">{listing.title}</div>
+        {listing.sellerName && <div className="truncate text-xs text-muted">by {listing.sellerName}</div>}
         <div className="mt-auto flex items-end justify-between pt-2">
           <span className={listing.salePriceCents ? "text-lg font-semibold" : "text-sm font-semibold text-accent"}>
             {formatPrice(listing.salePriceCents, listing.currency)}

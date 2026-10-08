@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { sanitize } from "@/lib/ai/extract";
-import { formatMoney, phoneFromJid } from "@/lib/format";
+import { formatMoney, phoneFromJid, whatsappLink } from "@/lib/format";
 import { dedupeKeyFor, isObviousChatter, priceFields } from "@/lib/whatsapp/ingest";
 import { parseWebhook } from "@/lib/whatsapp/whapi";
 
@@ -199,5 +199,18 @@ describe("isObviousChatter", () => {
     expect(isObviousChatter("Sold", false)).toBe(true);
     expect(isObviousChatter("Sold", true)).toBe(false);
     expect(isObviousChatter("SOOOOLD THANKS", true)).toBe(true); // not a clear sold word; harmless either way
+  });
+});
+
+describe("whatsappLink", () => {
+  it("links real phone numbers with a prefilled message", () => {
+    expect(whatsappLink("13365679220", "Hi, is it available?")).toBe(
+      "https://wa.me/13365679220?text=Hi%2C%20is%20it%20available%3F",
+    );
+    expect(whatsappLink("13365679220@s.whatsapp.net")).toBe("https://wa.me/13365679220");
+  });
+  it("returns null for WhatsApp's anonymous ids", () => {
+    expect(whatsappLink("146346833113259@lid")).toBeNull();
+    expect(whatsappLink("abc")).toBeNull();
   });
 });

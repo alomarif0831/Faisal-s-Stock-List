@@ -60,7 +60,7 @@ export function ProductImage({
           {(category && ICONS[category]) ?? DEFAULT_ICON}
         </svg>
         {fallbackLabel && <span className="text-sm font-medium text-foreground/70">{fallbackLabel}</span>}
-        <span className="text-[11px]">Photo on request</span>
+        <span className="text-[11px]">No photo posted</span>
       </div>
     );
   }

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { UserButton } from "@clerk/nextjs";
-import { clerkConfigured, currentUserId, isAdmin } from "@/lib/auth";
+import { currentUserId, isAdmin } from "@/lib/auth";
 import { SITE_NAME } from "@/lib/config";
 import { OnyxGem } from "./onyx-mark";
 
@@ -17,32 +17,15 @@ export async function SiteHeader() {
         </Link>
         <nav className="ml-auto flex items-center gap-1 text-sm">
           <Link href="/" className="rounded-full px-3 py-1.5 hover:bg-background">
-            Shop
+            All stock
           </Link>
           {admin && (
             <Link href="/admin" className="rounded-full px-3 py-1.5 hover:bg-background">
               Admin
             </Link>
           )}
-          {signedIn ? (
-            <>
-              <Link href="/account" className="rounded-full px-3 py-1.5 hover:bg-background">
-                Account
-              </Link>
-              <UserButton />
-            </>
-          ) : (
-            clerkConfigured() && (
-              <>
-                <Link href="/sign-in" className="rounded-full px-3 py-1.5 hover:bg-background">
-                  Sign in
-                </Link>
-                <Link href="/sign-up" className="btn-primary">
-                  Create account
-                </Link>
-              </>
-            )
-          )}
+          {/* Accounts are only for the admin now; visitors browse without one. */}
+          {signedIn && <UserButton />}
         </nav>
       </div>
     </header>

@@ -3,8 +3,9 @@ import { and, countDistinct, desc, eq, gte, ilike, or, sql, type SQL } from "dri
 import { db, listings } from "@/db";
 import { LISTING_TTL_DAYS } from "@/lib/config";
 
-// Columns safe to show buyers. Seller identity, group, and the seller's
-// price never leave the server on public pages.
+// Columns shown on the public site. The site is a directory: visitors
+// contact sellers directly, so the seller, their group and the original
+// post are public.
 const publicColumns = {
   id: listings.id,
   title: listings.title,
@@ -20,6 +21,10 @@ const publicColumns = {
   currency: listings.currency,
   imageIds: listings.imageIds,
   lastSeenAt: listings.lastSeenAt,
+  sellerId: listings.sellerId,
+  sellerName: listings.sellerName,
+  chatName: listings.chatName,
+  rawText: listings.rawText,
 };
 
 export type PublicListing = {
@@ -32,6 +37,7 @@ export type CatalogFilters = {
   category?: string;
   condition?: string;
   sort?: string;
+  seller?: string;
 };
 
 function visible(): SQL {
@@ -44,9 +50,17 @@ export async function searchCatalog(f: CatalogFilters) {
   if (f.brand) where.push(eq(listings.brand, f.brand));
   if (f.category) where.push(eq(listings.category, f.category));
   if (f.condition) where.push(eq(listings.condition, f.condition));
+  if (f.seller) where.push(eq(listings.sellerId, f.seller));
   for (const word of (f.q ?? "").trim().split(/\s+/).filter(Boolean).slice(0, 6)) {
     const like = `%${word.replace(/[%_\\]/g, "\\$&")}%`;
-    where.push(or(ilike(listings.title, like), ilike(listings.details, like), ilike(listings.color, like))!);
+    where.push(
+      or(
+        ilike(listings.title, like),
+        ilike(listings.details, like),
+        ilike(listings.color, like),
+        ilike(listings.sellerName, like),
+      )!,
+    );
   }
   // Several sellers can offer the same product: show it once, at the
   // cheapest offer. (Admins still see every seller's listing.)

@@ -4,7 +4,7 @@ import { and, eq, gte, inArray, like } from "drizzle-orm";
 import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { db, listings, orders, waMessages } from "@/db";
+import { db, hiddenSellers, listings, orders, waMessages } from "@/db";
 import { requireAdmin } from "@/lib/auth";
 import { MARKUP_CENTS } from "@/lib/config";
 import { cancelOrder, confirmAndCharge } from "@/lib/orders";
@@ -36,6 +36,28 @@ export async function updateListing(fd: FormData) {
   }
   if (Number.isInteger(qty) && qty >= 0) patch.quantity = qty;
   await db.update(listings).set(patch).where(eq(listings.id, id(fd)));
+  revalidatePath("/admin");
+}
+
+/** Seller asked to be taken off the site: hide their listings and skip their future posts. */
+export async function hideSeller(fd: FormData) {
+  await requireAdmin();
+  const sellerId = id(fd, "sellerId");
+  if (!sellerId) return;
+  await db
+    .insert(hiddenSellers)
+    .values({ sellerId, sellerName: text(fd, "sellerName") })
+    .onConflictDoNothing();
+  await db
+    .update(listings)
+    .set({ status: "hidden", updatedAt: new Date() })
+    .where(and(eq(listings.sellerId, sellerId), eq(listings.status, "active")));
+  revalidatePath("/admin");
+}
+
+export async function unhideSeller(fd: FormData) {
+  await requireAdmin();
+  await db.delete(hiddenSellers).where(eq(hiddenSellers.sellerId, id(fd, "sellerId")));
   revalidatePath("/admin");
 }
 

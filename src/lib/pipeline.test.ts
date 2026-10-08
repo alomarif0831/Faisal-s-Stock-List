@@ -73,6 +73,7 @@ describe.skipIf(!DB_URL)("whatsapp -> listings -> orders", () => {
     await m.db.delete(m.listings);
     await m.db.delete(m.waMessages);
     await m.db.delete(m.images);
+    await m.db.delete(m.hiddenSellers);
   });
 
   it("pairs a photo burst with the price text in one AI call, and retries are no-ops", async () => {
@@ -334,5 +335,20 @@ describe.skipIf(!DB_URL)("whatsapp -> listings -> orders", () => {
     expect(after.find((l) => l.id === mine.id)!.status).toBe("sold");
     expect(after.find((l) => l.id === theirs.id)!.status).toBe("active");
     expect((await m.db.select().from(m.waMessages)).every((r) => r.status === "done")).toBe(true);
+  });
+
+  it("skips sellers who opted out, without an AI call", async () => {
+    await m.db.insert(m.hiddenSellers).values({ sellerId: SELLER, sellerName: "Ali" });
+    await ingest.recordMessage(msg({ text: "16 Pro 256 black 900" }));
+    await ingest.processBurst(SELLER);
+    expect(extract).not.toHaveBeenCalled();
+    expect(await m.db.select().from(m.listings)).toHaveLength(0);
+    expect((await m.db.select().from(m.waMessages))[0].status).toBe("ignored");
+  });
+
+  it("shows the seller's own price with no markup by default", async () => {
+    const { priceFields } = await import("@/lib/whatsapp/ingest");
+    // tests run with MARKUP_DOLLARS=10; production default is 0
+    expect(priceFields(900)).toMatchObject({ sourcePriceCents: 90000, salePriceCents: 91000 });
   });
 });

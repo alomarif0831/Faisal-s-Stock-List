@@ -1,12 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requestToBuy } from "@/app/actions";
-import { CHECKOUT_MARKS, PaymentBadges } from "@/components/payment-badges";
 import { ProductImage } from "@/components/product-image";
-import { SessionResync } from "@/components/session-resync";
-import { clerkConfigured, getCustomer, hasShipping } from "@/lib/auth";
-import { formatPrice, timeAgo } from "@/lib/format";
+import { SITE_NAME } from "@/lib/config";
+import { formatPrice, timeAgo, whatsappLink } from "@/lib/format";
 import { getPublicListing } from "@/lib/listings";
 
 export async function generateMetadata({ params }: PageProps<"/listing/[id]">): Promise<Metadata> {
@@ -19,8 +16,12 @@ export default async function ListingPage({ params }: PageProps<"/listing/[id]">
   const listing = await getPublicListing(id);
   if (!listing) notFound();
 
-  const customer = await getCustomer();
-  const ready = customer && hasShipping(customer);
+  const price = formatPrice(listing.salePriceCents, listing.currency);
+  const seller = listing.sellerName ?? "the seller";
+  const chat = whatsappLink(
+    listing.sellerId,
+    `Hi ${listing.sellerName ?? ""}, I saw your ${listing.title}${listing.salePriceCents ? ` for ${price}` : ""} on ${SITE_NAME}${listing.chatName ? ` (posted in ${listing.chatName})` : ""}. Is it still available?`.replace("Hi ,", "Hi,"),
+  );
   const specs = [
     ["Brand", listing.brand],
     ["Model", listing.model],
@@ -63,10 +64,7 @@ export default async function ListingPage({ params }: PageProps<"/listing/[id]">
             <h1 className="mt-1 text-2xl font-semibold tracking-tight">{listing.title}</h1>
             <div className="mt-3 text-3xl font-semibold">{formatPrice(listing.salePriceCents, listing.currency)}</div>
             {!listing.salePriceCents && (
-              <p className="mt-1 text-sm text-muted">
-                The supplier didn&apos;t post a price. Request it and we&apos;ll get you a price to approve before
-                anything is charged.
-              </p>
+              <p className="mt-1 text-sm text-muted">No price was posted. Message the seller for their price.</p>
             )}
           </div>
 
@@ -80,96 +78,51 @@ export default async function ListingPage({ params }: PageProps<"/listing/[id]">
           </dl>
           {listing.details && <p className="text-sm leading-relaxed text-muted">{listing.details}</p>}
 
-          <div className="space-y-2">
-            <div className="text-xs font-medium text-muted">Pay your way</div>
-            <PaymentBadges />
+          <div className="card space-y-3 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="label">Seller</div>
+                <div className="font-semibold">{seller}</div>
+                <div className="text-xs text-muted">
+                  {listing.chatName ? `Posted in ${listing.chatName} · ` : ""}
+                  {timeAgo(listing.lastSeenAt)}
+                </div>
+              </div>
+              <Link href={`/?seller=${encodeURIComponent(listing.sellerId)}`} className="text-xs text-accent underline">
+                More from this seller
+              </Link>
+            </div>
+            {chat ? (
+              <a href={chat} target="_blank" rel="noopener noreferrer" className="btn-primary w-full">
+                <WhatsAppIcon /> Message seller on WhatsApp
+              </a>
+            ) : (
+              <p className="rounded-lg bg-background p-3 text-sm text-muted">
+                This seller&apos;s number isn&apos;t shared. Reply to their post in {listing.chatName ?? "the group"}.
+              </p>
+            )}
+            <p className="text-xs text-muted">
+              Deals are made directly with the seller. {SITE_NAME} only lists what&apos;s posted in the groups. Check
+              the item and the seller before you pay.
+            </p>
           </div>
 
-          <div className="card space-y-3 p-4">
-            <h2 className="font-semibold">How buying works</h2>
-            <ol className="list-decimal space-y-1 pl-5 text-sm text-muted">
-              <li>Send a request. Nothing is charged yet.</li>
-              <li>We check with our supplier that it&apos;s still available, usually within the hour.</li>
-              <li>You pay (saved card, Apple Pay, Klarna and more) and it ships to your address.</li>
-            </ol>
-            {!clerkConfigured() ? (
-              <p className="text-sm text-muted">Ordering opens soon.</p>
-            ) : !customer ? (
-              <>
-                <SessionResync />
-                <Link href={`/sign-in?redirect_url=/listing/${listing.id}`} className="btn-primary w-full">
-                  Sign in to request
-                </Link>
-              </>
-            ) : !ready ? (
-              <Link href={`/account?next=/listing/${listing.id}`} className="btn-primary w-full">
-                Add your shipping address to request
-              </Link>
-            ) : (
-              <form action={requestToBuy} className="space-y-3">
-                <input type="hidden" name="listingId" value={listing.id} />
-                {listing.quantity > 1 && (
-                  <label className="block">
-                    <span className="label">Quantity</span>
-                    <input
-                      type="number"
-                      name="quantity"
-                      min={1}
-                      max={listing.quantity}
-                      defaultValue={1}
-                      className="input w-24"
-                    />
-                  </label>
-                )}
-                <label className="block">
-                  <span className="label">Note (optional)</span>
-                  <input name="note" maxLength={500} className="input" placeholder="Anything we should know?" />
-                </label>
-                <fieldset className="space-y-2">
-                  <legend className="label">How do you want to pay?</legend>
-                  {customer.hasPaymentMethod && (
-                    <PayOption value="saved_card" defaultChecked>
-                      <span className="font-medium capitalize">
-                        Saved {customer.cardBrand} ending {customer.cardLast4}
-                      </span>
-                      <span className="block text-xs text-muted">Charged automatically once it&apos;s confirmed.</span>
-                    </PayOption>
-                  )}
-                  <PayOption value="checkout" defaultChecked={!customer.hasPaymentMethod}>
-                    <span className="font-medium">Pay at checkout</span>
-                    <span className="block text-xs text-muted">
-                      Once it&apos;s confirmed you get a Pay button: Apple Pay, Google Pay, Klarna, Afterpay, Affirm,
-                      Amazon Pay, Cash App Pay or any card.
-                    </span>
-                    <PaymentBadges marks={CHECKOUT_MARKS} className="mt-2" />
-                  </PayOption>
-                </fieldset>
-                <button className="btn-primary w-full">{listing.salePriceCents ? "Request to buy" : "Request a price"}</button>
-                <p className="text-xs text-muted">
-                  Ships to {customer.shipCity}, {customer.shipState}. Nothing is charged until we confirm.
-                </p>
-              </form>
-            )}
-          </div>
+          {listing.rawText && (
+            <details className="card p-4 text-sm" open>
+              <summary className="cursor-pointer font-medium">Original post</summary>
+              <p className="mt-2 whitespace-pre-wrap text-muted">{listing.rawText}</p>
+            </details>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-function PayOption({
-  value,
-  defaultChecked,
-  children,
-}: {
-  value: "saved_card" | "checkout";
-  defaultChecked?: boolean;
-  children: React.ReactNode;
-}) {
+function WhatsAppIcon() {
   return (
-    <label className="flex cursor-pointer gap-3 rounded-xl border border-line p-3 text-sm has-[:checked]:border-accent has-[:checked]:bg-background">
-      <input type="radio" name="payment" value={value} defaultChecked={defaultChecked} className="mt-1 accent-[var(--accent)]" />
-      <span className="min-w-0 flex-1">{children}</span>
-    </label>
+    <svg viewBox="0 0 24 24" className="size-4" fill="currentColor" aria-hidden="true">
+      <path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.1l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.2-.4.7-1.4.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.8 11.9 11.9 0 0 0 4.6 4c1.7.7 2.3.8 3.2.7.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.2-.2-.4-.3Z" />
+    </svg>
   );
 }
