@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { sanitize } from "@/lib/ai/extract";
-import { formatMoney, phoneFromJid, whatsappLink } from "@/lib/format";
+import { formatMoney, messageSellerLink, phoneFromJid, whatsappLink } from "@/lib/format";
 import { dedupeKeyFor, isObviousChatter, priceFields } from "@/lib/whatsapp/ingest";
 import { parseWebhook } from "@/lib/whatsapp/whapi";
 
@@ -212,5 +212,29 @@ describe("whatsappLink", () => {
   it("returns null for WhatsApp's anonymous ids", () => {
     expect(whatsappLink("146346833113259@lid")).toBeNull();
     expect(whatsappLink("abc")).toBeNull();
+  });
+});
+
+describe("messageSellerLink", () => {
+  const base = {
+    sellerId: "13365679220",
+    sellerName: "Hugo",
+    title: "iPhone 16 Pro 256GB",
+    salePriceCents: 85000,
+    currency: "USD",
+    chatName: "Visionary Electronics",
+  };
+  it("prefills an availability check with item, price and group", () => {
+    const url = new URL(messageSellerLink(base, "Onyx Stock List")!);
+    expect(url.pathname).toBe("/13365679220");
+    expect(url.searchParams.get("text")).toBe(
+      "Hi Hugo, I saw your iPhone 16 Pro 256GB for $850 on Onyx Stock List (posted in Visionary Electronics). Is it still available?",
+    );
+  });
+  it("leaves out missing name, price and group", () => {
+    const url = new URL(
+      messageSellerLink({ ...base, sellerName: null, salePriceCents: null, chatName: null }, "Onyx Stock List")!,
+    );
+    expect(url.searchParams.get("text")).toBe("Hi, I saw your iPhone 16 Pro 256GB on Onyx Stock List. Is it still available?");
   });
 });

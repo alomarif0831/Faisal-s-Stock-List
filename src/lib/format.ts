@@ -36,3 +36,24 @@ export function whatsappLink(sellerId: string, message?: string): string | null 
   if (!/^\d{10,13}$/.test(digits)) return null;
   return `https://wa.me/${digits}${message ? `?text=${encodeURIComponent(message)}` : ""}`;
 }
+
+/** "Message Seller" link with a prefilled "is it still available?" message. */
+export function messageSellerLink(
+  l: {
+    sellerId: string;
+    sellerName: string | null;
+    title: string;
+    salePriceCents: number | null;
+    currency: string;
+    chatName: string | null;
+  },
+  siteName: string,
+): string | null {
+  const greeting = l.sellerName ? `Hi ${l.sellerName}` : "Hi";
+  const price = l.salePriceCents ? ` for ${formatMoney(l.salePriceCents, l.currency)}` : "";
+  const group = l.chatName ? ` (posted in ${l.chatName})` : "";
+  return whatsappLink(
+    l.sellerId,
+    `${greeting}, I saw your ${l.title}${price} on ${siteName}${group}. Is it still available?`,
+  );
+}
