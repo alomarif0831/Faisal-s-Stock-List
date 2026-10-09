@@ -24,7 +24,7 @@ export async function SiteHeader() {
               Admin
             </Link>
           )}
-          {/* Accounts are only for the admin now; visitors browse without one. */}
+          {/* Every page needs an account (see proxy.ts). */}
           {signedIn && <UserButton />}
         </nav>
       </div>

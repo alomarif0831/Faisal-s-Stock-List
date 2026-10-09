@@ -3,11 +3,12 @@
 A WhatsApp bot plus a storefront, both running on Vercel.
 
 1. **Capture.** The bot reads your reseller WhatsApp groups. When someone posts stock (text, photos or both), Claude turns it into listings: brand, model, storage, color, condition, quantity and price, **exactly as posted** (no markup by default; set `MARKUP_DOLLARS` to add one).
-2. **Directory.** Everything appears on the website, organised by brand and category with search and filters. Each listing shows the seller, the group it came from and the original post, plus a **Message seller on WhatsApp** button. Deals happen directly between buyer and seller.
+2. **Directory.** Everything appears on the website, organised by brand and category with search and filters. Each listing shows the seller, the group it came from and the original post, plus a **Message Seller** button that opens WhatsApp with an "is it still available?" message. Deals happen directly between buyer and seller.
+   **Members only:** every page needs a free Clerk account; signed-out visitors are sent to `/sign-up` and returned to the page they wanted (see `src/proxy.ts`).
 3. **Stays fresh.** Reposts update the existing listing instead of duplicating it, "sold" messages take items down, and anything not re-posted within `LISTING_TTL_DAYS` drops off.
 4. **Opt-out.** Admin → Listings → **Remove seller** hides a seller's listings and stops listing their future posts.
 
-> The earlier ordering flow (accounts, Stripe payments, automatic seller verification) is still in the code but no longer shown on the public site.
+> The earlier ordering flow (orders, Stripe payments, automatic seller verification) is still in the code but no longer shown on the public site.
 
 ## How it fits together
 
