@@ -2,12 +2,12 @@
 
 A WhatsApp bot plus a storefront, both running on Vercel.
 
-1. **Capture.** The bot reads your reseller WhatsApp groups. When someone posts stock (text, photos or both), Claude turns it into listings: brand, model, storage, color, condition, quantity and price, **exactly as posted** (no markup by default; set `MARKUP_DOLLARS` to add one).
+1. **Capture.** The bot reads your reseller WhatsApp groups. When someone posts stock (text, photos or both), Claude Haiku 4.5 (set `AI_MODEL` to change) turns it into listings: brand, model, storage, color, condition, quantity and price, **exactly as posted** (no markup by default; set `MARKUP_DOLLARS` to add one).
 2. **Directory.** Everything appears on the website, organised by brand and category with search and filters. Each listing shows the seller, the group it came from and the original post, plus a **Message Seller** button that opens WhatsApp with an "is it still available?" message. Deals happen directly between buyer and seller.
    **Members only:** every page needs a free Clerk account; signed-out visitors are sent to `/sign-up` and returned to the page they wanted (see `src/proxy.ts`).
 3. **Stays fresh.** Reposts update the existing listing instead of duplicating it, "sold" messages take items down, and anything not re-posted within `LISTING_TTL_DAYS` drops off.
 4. **Buyer tools.**
-   - **Find a Deal** (`/find`): item + max price. Shows matches at or under budget (with how much under), ones up to 15% over ("make an offer"), and matches posted without a price.
+   - **Find a Deal** (`/find`): describe the item and max price in plain words; Claude Haiku 4.5 turns it into searches, budget and condition (falls back to keyword search if the AI call fails). Shows matches at or under budget (with how much under), ones up to 15% over ("make an offer"), and matches posted without a price.
    - **Deal alerts** (`/alerts`): save any search; every new post and price drop is checked against it, with an optional WhatsApp message from the bot (max 10 per alert per day).
    - **Smart search** understands reseller shorthand (`16 pm`, `s25u`, `mbp`, `ip15`) and prices in the box (`ps5 under 400`, `$300-$450`); filter by price range and "last 24 hours".
    - **Price check** on each item: lowest-of-N-sellers badge, every other seller's price with a one-tap message, **Make an offer** (prefilled WhatsApp with your price), Share, and "alert me if it drops".

@@ -5,7 +5,8 @@ import { lastWhatsappFor } from "@/lib/alerts";
 import { currentUserId } from "@/lib/auth";
 import { CONDITIONS } from "@/lib/catalog";
 import { formatMoney } from "@/lib/format";
-import { findDeals } from "@/lib/listings";
+import { understandQuery } from "@/lib/ai/understand-query";
+import { findDeals, inStockModels } from "@/lib/listings";
 import { dollars, parseQuery } from "@/lib/search";
 
 export const metadata = { title: "Find a deal" };
@@ -23,19 +24,26 @@ const EXAMPLES = [
 export default async function FindPage({ searchParams }: PageProps<"/find">) {
   const sp = await searchParams;
   const q = first(sp.q).trim().slice(0, 120);
-  const condition = (CONDITIONS as readonly string[]).includes(first(sp.condition)) ? first(sp.condition) : "";
-  // a price typed into the item box ("ps5 under 400") counts as the budget too
-  const parsed = parseQuery(q);
+  const conditionParam = (CONDITIONS as readonly string[]).includes(first(sp.condition)) ? first(sp.condition) : "";
   const maxRaw = first(sp.max).replace(/[$,\s]/g, "");
-  const budget = (maxRaw ? dollars(maxRaw) : null) ?? parsed.maxCents;
-  const max = budget ? String(budget / 100) : "";
   const error = first(sp.error);
+
+  // Claude reads the request ("a sealed 16 pro max under 900 for my wife")
+  // and returns clean searches + budget; plain keyword search if it can't.
+  const ai = q ? await understandQuery(q, await inStockModels().catch(() => [])) : null;
+  const parsed = parseQuery(q);
+  const budget =
+    (maxRaw ? dollars(maxRaw) : null) ?? (ai?.max_price ? Math.round(ai.max_price * 100) : null) ?? parsed.maxCents;
+  const max = budget ? String(budget / 100) : "";
+  const condition = conditionParam || ai?.condition || "";
 
   const userId = await currentUserId();
   const [deals, whatsapp] = await Promise.all([
-    q ? findDeals(q, budget, condition || undefined) : null,
+    q ? findDeals(q, budget, condition || undefined, ai?.searches ?? []) : null,
     userId ? lastWhatsappFor(userId) : null,
   ]);
+  // Alerts store the cleaned-up search so they match new posts reliably.
+  const alertQuery = ai?.searches[0] ?? q;
   const money = (c: number) => formatMoney(c);
   const found = deals ? deals.under.length + deals.near.length + deals.noPrice.length : 0;
 
@@ -54,7 +62,14 @@ export default async function FindPage({ searchParams }: PageProps<"/find">) {
             <label className="label" htmlFor="q">
               What are you looking for?
             </label>
-            <input id="q" name="q" defaultValue={q} required placeholder="e.g. iPhone 16 Pro Max 256" className="input" />
+            <input
+              id="q"
+              name="q"
+              defaultValue={q}
+              required
+              placeholder="e.g. sealed 16 Pro Max 256 under $900"
+              className="input"
+            />
           </div>
           <div>
             <label className="label" htmlFor="max">
@@ -76,6 +91,12 @@ export default async function FindPage({ searchParams }: PageProps<"/find">) {
           <button className="btn-primary">Find it</button>
         </form>
         {error && <div className="card border-bad p-3 text-sm text-bad">{error}</div>}
+        {ai && (
+          <p className="text-sm text-muted">
+            <span className="font-medium text-foreground">✨ Looking for:</span> {ai.summary}
+            {ai.searches.length > 1 && <> (also checking {ai.searches.slice(1).join(", ")})</>}
+          </p>
+        )}
         {!q && (
           <div className="space-y-2 text-sm">
             <div className="text-muted">Try one:</div>
@@ -91,8 +112,8 @@ export default async function FindPage({ searchParams }: PageProps<"/find">) {
               ))}
             </div>
             <p className="text-xs text-muted">
-              Shorthand works: &quot;16 pm&quot;, &quot;s25u&quot;, &quot;mbp m4&quot;. You can also type the price
-              in the box, like &quot;ps5 under 400&quot;.
+              Just describe it, like &quot;a sealed 16 Pro Max under 900&quot; or &quot;the newest Samsung
+              flagship&quot;. Shorthand works too: &quot;16 pm&quot;, &quot;s25u&quot;, &quot;mbp m4&quot;.
             </p>
           </div>
         )}
@@ -163,13 +184,13 @@ export default async function FindPage({ searchParams }: PageProps<"/find">) {
 
           <aside className="space-y-3 lg:sticky lg:top-20 lg:self-start">
             <AlertForm
-              q={q}
+              q={alertQuery}
               max={max}
               condition={condition}
               whatsapp={whatsapp}
               label={
                 <>
-                  Get alerted when a new &quot;{q}&quot; is posted
+                  Get alerted when a new &quot;{alertQuery}&quot; is posted
                   {budget ? ` at ${money(budget)} or less` : ""}
                 </>
               }

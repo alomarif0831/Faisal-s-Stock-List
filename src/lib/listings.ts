@@ -131,11 +131,22 @@ export type DealResults = {
   noPrice: CatalogItem[];
 };
 
-/** Find a Deal: everything matching `q` around a budget. */
-export async function findDeals(q: string, maxCents: number | null, condition?: string): Promise<DealResults> {
+/**
+ * Find a Deal: everything matching `q` around a budget. `searches` are extra
+ * phrasings (from the AI) that also count as a match.
+ */
+export async function findDeals(
+  q: string,
+  maxCents: number | null,
+  condition?: string,
+  searches: string[] = [],
+): Promise<DealResults> {
   const parsed = parseQuery(q);
   const budget = maxCents ?? parsed.maxCents;
-  const text = textMatcher(parsed.tokens);
+  const matchers = [parsed.tokens, ...searches.map((s) => parseQuery(s).tokens)]
+    .filter((t, i) => t.length > 0 || i === 0)
+    .map(textMatcher);
+  const text = (r: Row) => matchers.some((m) => m(r));
   const rows = (await visibleRows(condition ? [eq(listings.condition, condition)] : [])).filter(text);
   const priced = rows.filter((r) => r.salePriceCents != null);
   const inBudget = (r: Row) => budget == null || r.salePriceCents! <= budget;
@@ -145,6 +156,20 @@ export async function findDeals(q: string, maxCents: number | null, condition?: 
     near: groupOffers(priced.filter(nearBudget)).sort(byPrice).slice(0, 24),
     noPrice: groupOffers(rows.filter((r) => r.salePriceCents == null)).slice(0, 12),
   };
+}
+
+/** Distinct "Brand Model" names on the site now, to help the AI map vague requests. */
+export async function inStockModels(): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ brand: listings.brand, model: listings.model, title: listings.title })
+    .from(listings)
+    .where(visible())
+    .limit(3000);
+  const names = rows.map((r) => {
+    const m = r.model ?? r.title;
+    return m.toLowerCase().startsWith(r.brand.toLowerCase()) ? m : `${r.brand} ${m}`;
+  });
+  return [...new Set(names)].sort();
 }
 
 /** Every live offer for the same product as `id` (including itself), cheapest first. */

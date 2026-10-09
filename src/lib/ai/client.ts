@@ -1,9 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 
-// Reading reseller posts is extraction, not deep reasoning, so the default
-// is Claude Sonnet 5.5 (half the price of Opus). Override with AI_MODEL,
-// e.g. claude-opus-5-5 for maximum accuracy or claude-haiku-4-5 for lowest cost.
-export const MODEL = process.env.AI_MODEL ?? "claude-sonnet-5-5";
+// Reading reseller posts and buyer searches is extraction, not deep
+// reasoning, so everything runs on Claude Haiku 4.5 by default to keep costs
+// low. Override with AI_MODEL (e.g. claude-sonnet-5-5) for harder cases.
+export const MODEL = process.env.AI_MODEL ?? "claude-haiku-4-5";
 
 let _client: Anthropic | null = null;
 export function anthropic(): Anthropic {

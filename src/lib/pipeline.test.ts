@@ -447,4 +447,20 @@ describe.skipIf(!DB_URL)("whatsapp -> listings -> orders", () => {
       delete process.env.WHAPI_TOKEN;
     }
   });
+
+  it("find a deal also matches the AI's search phrases", async () => {
+    const listingsMod = await import("@/lib/listings");
+    extract.mockResolvedValueOnce({ sold_listing_ids: [], is_sale_post: true, items: [iphone(800)] });
+    const post = msg({ text: "16 pro 256 black sealed 800" });
+    await ingest.recordMessage(post);
+    await ingest.processAfterQuietPeriod(post.id);
+
+    // The buyer's own words match nothing...
+    const plain = await listingsMod.findDeals("something nice for my wife", 90000);
+    expect(plain.under).toHaveLength(0);
+    // ...but the AI's interpretation does.
+    const ai = await listingsMod.findDeals("something nice for my wife", 90000, undefined, ["iphone 16 pro 256"]);
+    expect(ai.under.map((l) => l.title)).toEqual(["iPhone 16 Pro 256GB Black"]);
+    expect(await listingsMod.inStockModels()).toEqual(["Apple iPhone 16 Pro"]);
+  });
 });
