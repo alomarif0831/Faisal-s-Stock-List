@@ -22,7 +22,11 @@ const withClerk = clerkMiddleware(
     url.searchParams.set("redirect_url", req.nextUrl.pathname + req.nextUrl.search);
     return NextResponse.redirect(url);
   },
-  (req) => ({ frontendApiProxy: { enabled: clerkProxyEnabled(req.headers.get("host")) } }),
+  (req) => ({
+    frontendApiProxy: { enabled: clerkProxyEnabled(req.headers.get("host")) },
+    signInUrl: "/sign-in",
+    signUpUrl: "/sign-up",
+  }),
 );
 
 export function proxy(req: NextRequest, ev: NextFetchEvent) {

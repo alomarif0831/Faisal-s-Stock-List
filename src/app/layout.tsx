@@ -36,6 +36,18 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   if (!clerkConfigured()) return page;
   const host = (await headers()).get("host");
   return (
-    <ClerkProvider proxyUrl={clerkProxyEnabled(host) ? CLERK_PROXY_PATH : undefined}>{page}</ClerkProvider>
+    <ClerkProvider
+      proxyUrl={clerkProxyEnabled(host) ? CLERK_PROXY_PATH : undefined}
+      // Keep sign-in on this site. Without these Clerk falls back to its
+      // hosted pages on accounts.<domain>, which break if that DNS record
+      // or Clerk's portal has trouble.
+      signInUrl="/sign-in"
+      signUpUrl="/sign-up"
+      signInFallbackRedirectUrl="/"
+      signUpFallbackRedirectUrl="/"
+      afterSignOutUrl="/sign-in"
+    >
+      {page}
+    </ClerkProvider>
   );
 }
