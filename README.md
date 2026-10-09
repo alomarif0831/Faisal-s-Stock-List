@@ -11,7 +11,13 @@ A WhatsApp bot plus a storefront, both running on Vercel.
    - **Deal alerts** (`/alerts`): save any search; every new post and price drop is checked against it, with an optional WhatsApp message from the bot (max 10 per alert per day).
    - **Smart search** understands reseller shorthand (`16 pm`, `s25u`, `mbp`, `ip15`) and prices in the box (`ps5 under 400`, `$300-$450`); filter by price range and "last 24 hours".
    - **Price check** on each item: lowest-of-N-sellers badge, every other seller's price with a one-tap message, **Make an offer** (prefilled WhatsApp with your price), Share, and "alert me if it drops".
-5. **Opt-out.** Admin → Listings → **Remove seller** hides a seller's listings and stops listing their future posts.
+5. **Opt-out.** A seller texts **"opt out"** to the bot's number (or types it in a group): their listings come down, future posts are skipped (no AI call), they get a private confirmation, and you get a WhatsApp ping. **"opt in"** undoes it. Admin → Listings → **Remove seller** does the same by hand, and so does the API:
+   ```
+   curl -X POST https://<your-domain>/api/sellers/opt-out -H "Authorization: Bearer $ADMIN_API_KEY" -d '{"phone":"+1 555 123 4567"}'
+   curl -X POST ... -d '{"phone":"+1 555 123 4567","action":"in"}'   # opt back in
+   curl https://<your-domain>/api/sellers/opt-out -H "Authorization: Bearer $ADMIN_API_KEY"   # list
+   ```
+   (`ADMIN_API_KEY` falls back to `WHATSAPP_WEBHOOK_SECRET` if unset.)
 
 > The earlier ordering flow (orders, Stripe payments, automatic seller verification) is still in the code but no longer shown on the public site.
 

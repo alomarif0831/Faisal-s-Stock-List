@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, gte, inArray, like, ne, sql } from "drizzle-orm";
-import { db, hiddenSellers, images, listings, waMessages } from "@/db";
+import { db, images, listings, waMessages } from "@/db";
 import { extractListings, type ExtractedItem } from "@/lib/ai/extract";
 import { checkAlerts } from "@/lib/alerts";
 import { dedupeKeyFor } from "@/lib/catalog";
@@ -9,6 +9,7 @@ export { dedupeKeyFor };
 import { allowedGroups, MARKUP_CENTS, PAIRING_WINDOW_MS } from "@/lib/config";
 import { timeAgo } from "@/lib/format";
 import { handleSellerReplies, hasOpenVerification } from "@/lib/verify";
+import { isOptedOut } from "./opt-out";
 import { downloadImage, fetchGroupName, isGroupChat, type IncomingMessage } from "./whapi";
 
 // Sellers usually post a burst: a few photos, then the price text (or the
@@ -126,8 +127,7 @@ export async function processBurst(senderId: string): Promise<void> {
   if (!pending.length) return;
 
   // Seller opted out of the site: don't list them (and don't pay for an AI call).
-  const [optedOut] = await db.select().from(hiddenSellers).where(eq(hiddenSellers.sellerId, senderId));
-  if (optedOut) {
+  if (await isOptedOut(senderId)) {
     await db.update(waMessages).set({ status: "ignored" }).where(inArray(waMessages.id, pending.map((m) => m.id)));
     return;
   }

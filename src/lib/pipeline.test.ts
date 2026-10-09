@@ -2,6 +2,7 @@
 // TEST_DATABASE_URL is set (a throwaway database with migrations applied):
 //   TEST_DATABASE_URL=postgres://... npm test
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { eq } from "drizzle-orm";
 
 const DB_URL = process.env.TEST_DATABASE_URL;
 process.env.DATABASE_URL = DB_URL;
@@ -394,6 +395,54 @@ describe.skipIf(!DB_URL)("whatsapp -> listings -> orders", () => {
       const hits = await m.db.select().from(m.wantHits);
       expect(hits.map((h) => h.wantId)).toEqual([want.id]);
       expect(hits.some((h) => h.wantId === other.id)).toBe(false);
+    } finally {
+      delete process.env.WHAPI_TOKEN;
+    }
+  });
+
+  it("sellers can text 'opt out' / 'opt in' to the bot", async () => {
+    const opt = await import("@/lib/whatsapp/opt-out");
+    expect(opt.optCommand("Opt out")).toBe("out");
+    expect(opt.optCommand("OPT-OUT!")).toBe("out");
+    expect(opt.optCommand("optout")).toBe("out");
+    expect(opt.optCommand("remove me")).toBe("out");
+    expect(opt.optCommand("opt in")).toBe("in");
+    expect(opt.optCommand("16 pro 256 sealed 900, opt out of shipping")).toBeNull();
+    expect(opt.optCommand("hello")).toBeNull();
+
+    // A live listing first.
+    extract.mockResolvedValueOnce({ sold_listing_ids: [], is_sale_post: true, items: [iphone(900)] });
+    const post = msg({ text: "16 pro 256 black sealed 900" });
+    await ingest.recordMessage(post);
+    await ingest.processAfterQuietPeriod(post.id);
+    const live = () => m.db.select().from(m.listings).where(eq(m.listings.status, "active"));
+    expect(await live()).toHaveLength(1);
+
+    process.env.WHAPI_TOKEN = "test";
+    try {
+      // DM "opt out": listing comes down, seller gets a private reply.
+      const dm = msg({ chatId: `${SELLER}@s.whatsapp.net`, senderId: `${SELLER}@s.whatsapp.net`, text: "Opt out" });
+      expect(await opt.handleOptCommand(dm)).toBe(true);
+      expect(await opt.handleOptCommand(dm)).toBe(true); // gateway retry: no second reply
+      expect(await live()).toHaveLength(0);
+      expect(sent).toHaveBeenCalledTimes(1);
+      expect(sent.mock.calls[0][0]).toBe(SELLER);
+      expect(sent.mock.calls[0][1]).toContain("opted out");
+      expect(sent.mock.calls[0][1]).toContain("1 current listing was removed");
+
+      // Their next group post is skipped without an AI call.
+      const again = msg({ text: "16 pro 256 black sealed 880" });
+      await ingest.recordMessage(again);
+      await ingest.processAfterQuietPeriod(again.id);
+      expect(extract).toHaveBeenCalledTimes(1);
+      expect(await live()).toHaveLength(0);
+
+      // "opt in" typed in a group: back on the site, reply goes to their DM.
+      const back = msg({ text: "opt in" });
+      expect(await opt.handleOptCommand(back)).toBe(true);
+      expect(await live()).toHaveLength(1);
+      expect(sent.mock.calls[1][0]).toBe(SELLER);
+      expect(sent.mock.calls[1][1]).toContain("back on");
     } finally {
       delete process.env.WHAPI_TOKEN;
     }

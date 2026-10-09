@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { after, NextResponse } from "next/server";
 import { parseWebhook } from "@/lib/whatsapp/whapi";
 import { processAfterQuietPeriod, recordMessage, shouldRecord } from "@/lib/whatsapp/ingest";
+import { handleOptCommand } from "@/lib/whatsapp/opt-out";
 
 // The debounce sleep + AI call run after the response, inside this budget.
 export const maxDuration = 120;
@@ -27,6 +28,8 @@ export async function POST(req: Request) {
 
   const fresh: string[] = [];
   for (const m of parseWebhook(body)) {
+    // "opt out" / "opt in" from a seller, by DM or in a group
+    if (await handleOptCommand(m)) continue;
     if (!(await shouldRecord(m))) continue;
     if (await recordMessage(m)) fresh.push(m.id);
   }
