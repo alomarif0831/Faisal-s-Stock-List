@@ -7,6 +7,11 @@ export const MARKUP_CENTS = Math.round(Number(process.env.MARKUP_DOLLARS ?? "0")
 // it in this many days (stock in these groups moves fast).
 export const LISTING_TTL_DAYS = Number(process.env.LISTING_TTL_DAYS ?? "7");
 
+/** Listings last seen before this are off the site. */
+export function listingCutoff(): Date {
+  return new Date(Date.now() - LISTING_TTL_DAYS * 24 * 60 * 60 * 1000);
+}
+
 // How long an image waits for its seller's text (and vice versa) before
 // we stop trying to pair them.
 export const PAIRING_WINDOW_MS = 5 * 60 * 1000;

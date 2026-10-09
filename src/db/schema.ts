@@ -5,6 +5,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -212,3 +213,37 @@ export const orders = pgTable(
 export type Listing = typeof listings.$inferSelect;
 export type Customer = typeof customers.$inferSelect;
 export type Order = typeof orders.$inferSelect;
+
+// Find a Deal alerts: "tell me when a 16 Pro Max 256 is posted under $900".
+// Checked against every listing the bot creates or updates (price drops too).
+export const wants = pgTable(
+  "wants",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clerkUserId: text("clerk_user_id").notNull(),
+    query: text("query").notNull(),
+    maxPriceCents: integer("max_price_cents"),
+    condition: text("condition"),
+    // WhatsApp number for alerts (digits); null = see matches on /alerts only
+    notifyWhatsapp: text("notify_whatsapp"),
+    active: boolean("active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("wants_user_idx").on(t.clerkUserId)],
+);
+
+// One row per (alert, listing) match, so nobody is pinged twice for the same post.
+export const wantHits = pgTable(
+  "want_hits",
+  {
+    wantId: uuid("want_id")
+      .notNull()
+      .references(() => wants.id, { onDelete: "cascade" }),
+    listingId: uuid("listing_id")
+      .notNull()
+      .references(() => listings.id, { onDelete: "cascade" }),
+    notified: boolean("notified").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.wantId, t.listingId] })],
+);

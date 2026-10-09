@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { and, asc, desc, eq, gte, inArray, like, ne, sql } from "drizzle-orm";
 import { db, hiddenSellers, images, listings, waMessages } from "@/db";
 import { extractListings, type ExtractedItem } from "@/lib/ai/extract";
+import { checkAlerts } from "@/lib/alerts";
 import { dedupeKeyFor } from "@/lib/catalog";
 
 export { dedupeKeyFor };
@@ -250,6 +251,7 @@ export async function processBurst(senderId: string): Promise<void> {
       touched.add(id);
     }
     await db.update(waMessages).set({ status: "done", error: null }).where(inArray(waMessages.id, ids));
+    await checkAlerts([...touched]);
   } catch (err) {
     console.error("[whatsapp] extraction failed", err);
     await db

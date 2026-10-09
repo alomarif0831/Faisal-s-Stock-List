@@ -36,7 +36,8 @@ export function tokenize(text: string): string[] {
     .filter(Boolean);
 }
 
-function dollars(raw: string): number | null {
+/** "1,250" | "1.2k" -> cents, or null. */
+export function dollars(raw: string): number | null {
   const m = raw.replace(/,/g, "").match(/^(\d+(?:\.\d+)?)(k?)$/i);
   if (!m) return null;
   const n = Number(m[1]) * (m[2] ? 1000 : 1);

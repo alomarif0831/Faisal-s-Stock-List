@@ -36,6 +36,13 @@
       "when": 1791500745754,
       "tag": "0004_hidden_sellers",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791520930783,
+      "tag": "0005_deal_alerts",
+      "breakpoints": true
     }
   ]
 }

@@ -8,6 +8,7 @@ process.env.DATABASE_URL = DB_URL;
 process.env.WHATSAPP_DEBOUNCE_MS = "20";
 
 const extract = vi.fn();
+const sent = vi.fn();
 vi.mock("@/lib/ai/extract", async (orig) => ({
   ...(await orig<typeof import("@/lib/ai/extract")>()),
   extractListings: (...args: unknown[]) => extract(...args),
@@ -17,7 +18,7 @@ vi.mock("@/lib/whatsapp/whapi", async (orig) => ({
   // Photo bytes come from the media id, so "the same photo" can be simulated.
   downloadImage: async (img: { id: string | null }) => ({ mimeType: "image/jpeg", data: Buffer.from(`jpeg:${img.id}`) }),
   fetchGroupName: async () => "Resellers 1",
-  sendText: async () => {},
+  sendText: async (...args: unknown[]) => void sent(...args),
 }));
 
 const GROUP = "120363111@g.us";
@@ -68,6 +69,8 @@ describe.skipIf(!DB_URL)("whatsapp -> listings -> orders", () => {
 
   beforeEach(async () => {
     extract.mockReset();
+    sent.mockReset();
+    await m.db.delete(m.wants);
     await m.db.delete(m.orders);
     await m.db.delete(m.customers);
     await m.db.delete(m.listings);
@@ -350,5 +353,49 @@ describe.skipIf(!DB_URL)("whatsapp -> listings -> orders", () => {
     const { priceFields } = await import("@/lib/whatsapp/ingest");
     // tests run with MARKUP_DOLLARS=10; production default is 0
     expect(priceFields(900)).toMatchObject({ sourcePriceCents: 90000, salePriceCents: 91000 });
+  });
+
+  it("deal alerts: fire once per listing, on new posts and on price drops into budget", async () => {
+    const userId = "user_alerts";
+    const [want] = await m.db
+      .insert(m.wants)
+      .values({ clerkUserId: userId, query: "16 pro 256", maxPriceCents: 85000, notifyWhatsapp: "15557770000" })
+      .returning();
+    const [other] = await m.db
+      .insert(m.wants)
+      .values({ clerkUserId: userId, query: "s25 ultra", maxPriceCents: 200000, notifyWhatsapp: "15557770000" })
+      .returning();
+    process.env.WHAPI_TOKEN = "test";
+    try {
+      // Over budget: recorded nowhere, no message.
+      extract.mockResolvedValueOnce({ sold_listing_ids: [], is_sale_post: true, items: [iphone(900)] });
+      const a = msg({ text: "16 pro 256 black sealed 900" });
+      await ingest.recordMessage(a);
+      await ingest.processAfterQuietPeriod(a.id);
+      expect(sent).not.toHaveBeenCalled();
+
+      // Price drop to 820: now in budget -> one WhatsApp alert.
+      extract.mockResolvedValueOnce({ sold_listing_ids: [], is_sale_post: true, items: [iphone(820)] }); // +$10 test markup = $830
+      const b = msg({ text: "price drop 16 pro 256 black 820" });
+      await ingest.recordMessage(b);
+      await ingest.processAfterQuietPeriod(b.id);
+      expect(sent).toHaveBeenCalledTimes(1);
+      expect(sent.mock.calls[0][0]).toBe("15557770000");
+      expect(sent.mock.calls[0][1]).toContain("iPhone 16 Pro 256GB Black");
+      expect(sent.mock.calls[0][1]).toContain("$20 under your budget");
+
+      // Reposting the same listing doesn't ping again.
+      extract.mockResolvedValueOnce({ sold_listing_ids: [], is_sale_post: true, items: [iphone(810)] });
+      const c = msg({ text: "16 pro 256 black 810" });
+      await ingest.recordMessage(c);
+      await ingest.processAfterQuietPeriod(c.id);
+      expect(sent).toHaveBeenCalledTimes(1);
+
+      const hits = await m.db.select().from(m.wantHits);
+      expect(hits.map((h) => h.wantId)).toEqual([want.id]);
+      expect(hits.some((h) => h.wantId === other.id)).toBe(false);
+    } finally {
+      delete process.env.WHAPI_TOKEN;
+    }
   });
 });

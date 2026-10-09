@@ -1,14 +1,27 @@
 import Link from "next/link";
-import type { PublicListing } from "@/lib/listings";
+import type { CatalogItem, PublicListing } from "@/lib/listings";
 import { SITE_NAME } from "@/lib/config";
 import { formatPrice, messageSellerLink, timeAgo } from "@/lib/format";
 import { ProductImage } from "./product-image";
 import { WhatsAppIcon } from "./whatsapp-icon";
 
-export function ListingCard({ listing }: { listing: PublicListing }) {
+export function ListingCard({
+  listing,
+  note,
+}: {
+  listing: PublicListing & Partial<Pick<CatalogItem, "sellerCount" | "highCents" | "isNew">>;
+  /** extra line under the price, e.g. "$120 under your budget" */
+  note?: React.ReactNode;
+}) {
   const chat = messageSellerLink(listing, SITE_NAME);
+  const sellers = listing.sellerCount ?? 1;
   return (
-    <div className="card group flex flex-col overflow-hidden transition-shadow hover:shadow-lg">
+    <div className="card group relative flex flex-col overflow-hidden transition-shadow hover:shadow-lg">
+      {listing.isNew && (
+        <span className="absolute left-2 top-2 z-10 rounded-full bg-accent px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-ink">
+          New
+        </span>
+      )}
       <Link href={`/listing/${listing.id}`} className="flex flex-1 flex-col">
         <ProductImage
           id={listing.imageIds[0]}
@@ -32,6 +45,15 @@ export function ListingCard({ listing }: { listing: PublicListing }) {
               {timeAgo(listing.lastSeenAt)}
             </span>
           </div>
+          {sellers > 1 && (
+            <div className="text-[11px] font-medium text-accent">
+              {sellers} sellers{listing.salePriceCents ? " · lowest shown" : ""}
+              {listing.highCents && listing.salePriceCents && listing.highCents > listing.salePriceCents
+                ? ` (up to ${formatPrice(listing.highCents, listing.currency)})`
+                : ""}
+            </div>
+          )}
+          {note && <div className="text-[11px] font-medium text-good">{note}</div>}
         </div>
       </Link>
       {chat && (

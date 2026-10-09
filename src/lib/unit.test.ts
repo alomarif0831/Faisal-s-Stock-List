@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { sanitize } from "@/lib/ai/extract";
+import { parseQuery, queryMatcher, type Searchable } from "@/lib/search";
 import { formatMoney, messageSellerLink, phoneFromJid, whatsappLink } from "@/lib/format";
 import { dedupeKeyFor, isObviousChatter, priceFields } from "@/lib/whatsapp/ingest";
 import { parseWebhook } from "@/lib/whatsapp/whapi";
@@ -236,5 +237,58 @@ describe("messageSellerLink", () => {
       messageSellerLink({ ...base, sellerName: null, salePriceCents: null, chatName: null }, "Onyx Stock List")!,
     );
     expect(url.searchParams.get("text")).toBe("Hi, I saw your iPhone 16 Pro 256GB on Onyx Stock List. Is it still available?");
+  });
+});
+
+describe("search matcher", () => {
+  const item = (title: string, extra: Partial<Searchable & { salePriceCents: number | null }> = {}) => ({
+    title,
+    brand: "Apple",
+    model: null,
+    storage: null,
+    color: null,
+    condition: "New sealed",
+    details: null,
+    sellerName: "Hugo",
+    salePriceCents: 90000,
+    ...extra,
+  });
+
+  it("understands reseller shorthand", () => {
+    const pm = item("iPhone 16 Pro Max 256GB Natural Titanium");
+    expect(queryMatcher("16 pm 256")(pm)).toBe(true);
+    expect(queryMatcher("ip16 promax")(pm)).toBe(true);
+    expect(queryMatcher("iphone 16 pro max 256gb")(pm)).toBe(true);
+    expect(queryMatcher("16 pro 512")(pm)).toBe(false);
+    const s25u = item("Galaxy S25 Ultra 512GB Black", { brand: "Samsung" });
+    expect(queryMatcher("s25u 512")(s25u)).toBe(true);
+    expect(queryMatcher("samsung s25 ultra")(s25u)).toBe(true);
+    expect(queryMatcher("s24u")(s25u)).toBe(false);
+  });
+
+  it("matches numbers whole, so 12 never matches 128GB", () => {
+    const i15 = item("iPhone 15 128GB Black");
+    expect(queryMatcher("iphone 12")(i15)).toBe(false);
+    expect(queryMatcher("iphone 15 128")(i15)).toBe(true);
+  });
+
+  it("reads prices from the query but not model numbers", () => {
+    expect(parseQuery("16 pro max under $900")).toMatchObject({ maxCents: 90000, minCents: null });
+    expect(parseQuery("ps5 below 450")).toMatchObject({ maxCents: 45000 });
+    expect(parseQuery("macbook $1.2k")).toMatchObject({ maxCents: 120000 });
+    expect(parseQuery("ipad $300-$450")).toMatchObject({ minCents: 30000, maxCents: 45000 });
+    expect(parseQuery("iphone 16 pro max 256")).toMatchObject({ minCents: null, maxCents: null });
+    expect(parseQuery("16 pro max under $900").tokens).toEqual(["16", "pro", "max"]);
+
+    const pm = item("iPhone 16 Pro Max 256GB");
+    expect(queryMatcher("16 pm under 950")(pm)).toBe(true);
+    expect(queryMatcher("16 pm under 850")(pm)).toBe(false);
+    expect(queryMatcher("16 pm under 850")({ ...pm, salePriceCents: null })).toBe(false);
+  });
+
+  it("finds sellers by name and filters condition", () => {
+    const pm = item("iPhone 16 Pro Max 256GB");
+    expect(queryMatcher("hugo")(pm)).toBe(true);
+    expect(queryMatcher("16", { condition: "Used" })(pm)).toBe(false);
   });
 });

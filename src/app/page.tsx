@@ -14,6 +14,9 @@ export default async function CatalogPage({ searchParams }: PageProps<"/">) {
     condition: first(sp.condition),
     sort: first(sp.sort),
     seller: first(sp.seller),
+    min: first(sp.min),
+    max: first(sp.max),
+    fresh: first(sp.fresh),
   };
   const setupClerk = first(sp.setup) === "clerk";
 
@@ -60,22 +63,31 @@ export default async function CatalogPage({ searchParams }: PageProps<"/">) {
           {filters.brand && <input type="hidden" name="brand" value={filters.brand} />}
           {filters.seller && <input type="hidden" name="seller" value={filters.seller} />}
           {filters.category && <input type="hidden" name="category" value={filters.category} />}
+          {filters.min && <input type="hidden" name="min" value={filters.min} />}
+          {filters.max && <input type="hidden" name="max" value={filters.max} />}
+          {filters.fresh && <input type="hidden" name="fresh" value={filters.fresh} />}
           <input
             name="q"
             defaultValue={filters.q}
-            placeholder="Search: 16 Pro Max 256, S25 Ultra, seller…"
+            placeholder="Try: 16 pm 256 under $900"
             className="input sm:w-80"
           />
           <button className="btn-primary">Search</button>
         </form>
       </section>
 
-      <div className="card px-4 py-3 text-sm">
-        <span className="font-medium">Live stock from our WhatsApp reseller groups.</span>
-        <span className="text-muted">
-          {" "}
-          Prices are exactly as posted. Tap any item to message the seller directly on WhatsApp.
-        </span>
+      <div className="card flex flex-col gap-3 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <span className="font-medium">Know what you want and what you&apos;ll pay?</span>
+          <span className="text-muted">
+            {" "}
+            Tell us the item and your price. We&apos;ll find every match in the groups and alert you when a new one
+            is posted.
+          </span>
+        </div>
+        <Link href="/find" className="btn-primary shrink-0 px-4 py-2 text-sm">
+          Find a deal
+        </Link>
       </div>
 
       {filters.seller && (
@@ -122,6 +134,32 @@ export default async function CatalogPage({ searchParams }: PageProps<"/">) {
               </FilterLink>
             ))}
           </FilterGroup>
+          <FilterGroup title="Price">
+            <form action="/" className="flex items-center gap-1">
+              {Object.entries(filters)
+                .filter(([k, v]) => v && !["min", "max"].includes(k))
+                .map(([k, v]) => (
+                  <input key={k} type="hidden" name={k} value={v} />
+                ))}
+              <input name="min" defaultValue={filters.min} inputMode="numeric" placeholder="$ min" className="input w-20 px-2 py-1 text-sm" />
+              <span className="text-muted">–</span>
+              <input name="max" defaultValue={filters.max} inputMode="numeric" placeholder="$ max" className="input w-20 px-2 py-1 text-sm" />
+              <button className="btn-ghost px-2 py-1 text-sm">Go</button>
+            </form>
+            {(filters.min || filters.max) && (
+              <FilterLink href={href({ min: undefined, max: undefined })} active={false}>
+                Any price
+              </FilterLink>
+            )}
+          </FilterGroup>
+          <FilterGroup title="Posted">
+            <FilterLink href={href({ fresh: undefined })} active={!filters.fresh}>
+              Any time
+            </FilterLink>
+            <FilterLink href={href({ fresh: "1" })} active={filters.fresh === "1"}>
+              Last 24 hours
+            </FilterLink>
+          </FilterGroup>
           <FilterGroup title="Sort">
             <FilterLink href={href({ sort: undefined })} active={!filters.sort}>
               Newest
@@ -138,7 +176,15 @@ export default async function CatalogPage({ searchParams }: PageProps<"/">) {
         <section>
           {items.length === 0 ? (
             <div className="card p-10 text-center text-sm text-muted">
-              Nothing matches right now. New stock is added automatically as it arrives.
+              <p>Nothing matches right now. New stock is added automatically as it arrives.</p>
+              {filters.q && (
+                <Link
+                  href={`/find?q=${encodeURIComponent(filters.q)}${filters.max ? `&max=${encodeURIComponent(filters.max)}` : ""}`}
+                  className="btn-primary mt-4 inline-flex px-4 py-2 text-sm"
+                >
+                  🔔 Alert me when “{filters.q}” is posted
+                </Link>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">

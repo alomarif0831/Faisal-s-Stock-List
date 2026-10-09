@@ -3,9 +3,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ProductImage } from "@/components/product-image";
 import { SITE_NAME } from "@/lib/config";
+import { OfferBox } from "@/components/offer-box";
+import { ShareButton } from "@/components/share-button";
 import { WhatsAppIcon } from "@/components/whatsapp-icon";
-import { formatPrice, messageSellerLink, timeAgo } from "@/lib/format";
-import { getPublicListing } from "@/lib/listings";
+import { formatMoney, formatPrice, messageSellerLink, timeAgo } from "@/lib/format";
+import { getPublicListing, offersForListing } from "@/lib/listings";
 
 export async function generateMetadata({ params }: PageProps<"/listing/[id]">): Promise<Metadata> {
   const listing = await getPublicListing((await params).id).catch(() => null);
@@ -14,8 +16,25 @@ export async function generateMetadata({ params }: PageProps<"/listing/[id]">): 
 
 export default async function ListingPage({ params }: PageProps<"/listing/[id]">) {
   const { id } = await params;
-  const listing = await getPublicListing(id);
+  const [listing, offers] = await Promise.all([getPublicListing(id), offersForListing(id)]);
   if (!listing) notFound();
+
+  // Price check against every seller offering the same product.
+  const others = offers.filter((o) => o.id !== listing.id);
+  const prices = offers.map((o) => o.salePriceCents).filter((p): p is number => p != null);
+  const lowest = prices.length ? Math.min(...prices) : null;
+  const price = listing.salePriceCents;
+  const insight =
+    price == null || prices.length < 2 || lowest == null
+      ? null
+      : price === lowest
+        ? { good: true, text: `Lowest price of ${new Set(offers.map((o) => o.sellerId)).size} sellers` }
+        : { good: false, text: `${formatMoney(price - lowest, listing.currency)} more than the lowest offer` };
+  const alertQuery = [listing.model ?? listing.title, listing.storage].filter(Boolean).join(" ");
+  const alertHref = `/find?${new URLSearchParams({
+    q: alertQuery,
+    ...(price ? { max: String(Math.floor((price * 0.95) / 100)) } : {}),
+  })}`;
 
   const seller = listing.sellerName ?? "the seller";
   const chat = messageSellerLink(listing, SITE_NAME);
@@ -59,7 +78,25 @@ export default async function ListingPage({ params }: PageProps<"/listing/[id]">
               {listing.category} · listed {timeAgo(listing.lastSeenAt)}
             </div>
             <h1 className="mt-1 text-2xl font-semibold tracking-tight">{listing.title}</h1>
-            <div className="mt-3 text-3xl font-semibold">{formatPrice(listing.salePriceCents, listing.currency)}</div>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <span className="text-3xl font-semibold">{formatPrice(listing.salePriceCents, listing.currency)}</span>
+              {insight && (
+                <span
+                  className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                    insight.good ? "bg-good/10 text-good" : "bg-warn/10 text-warn"
+                  }`}
+                >
+                  {insight.good ? "✓ " : ""}
+                  {insight.text}
+                </span>
+              )}
+            </div>
+            <div className="mt-2 flex gap-4">
+              <ShareButton title={listing.title} />
+              <Link href={alertHref} className="text-xs text-accent underline">
+                🔔 Alert me if it drops lower
+              </Link>
+            </div>
             {!listing.salePriceCents && (
               <p className="mt-1 text-sm text-muted">No price was posted. Message the seller for their price.</p>
             )}
@@ -93,7 +130,18 @@ export default async function ListingPage({ params }: PageProps<"/listing/[id]">
               <a href={chat} target="_blank" rel="noopener noreferrer" className="btn-primary w-full">
                 <WhatsAppIcon /> Message Seller
               </a>
-            ) : (
+            ) : null}
+            {chat && (
+              <OfferBox
+                sellerId={listing.sellerId}
+                sellerName={listing.sellerName}
+                title={listing.title}
+                priceCents={listing.salePriceCents}
+                currency={listing.currency}
+                siteName={SITE_NAME}
+              />
+            )}
+            {!chat && (
               <p className="rounded-lg bg-background p-3 text-sm text-muted">
                 This seller&apos;s number isn&apos;t shared. Reply to their post in {listing.chatName ?? "the group"}.
               </p>
@@ -103,6 +151,44 @@ export default async function ListingPage({ params }: PageProps<"/listing/[id]">
               the item and the seller before you pay.
             </p>
           </div>
+
+          {others.length > 0 && (
+            <div className="card p-4">
+              <div className="mb-2 font-semibold">
+                {others.length} other seller{others.length === 1 ? "" : "s"} with this item
+              </div>
+              <ul className="divide-y divide-line text-sm">
+                {others.slice(0, 10).map((o) => {
+                  const link = messageSellerLink(o, SITE_NAME);
+                  return (
+                    <li key={o.id} className="flex items-center justify-between gap-3 py-2">
+                      <Link href={`/listing/${o.id}`} className="min-w-0 hover:underline">
+                        <span className="font-medium">{o.sellerName ?? "Seller"}</span>
+                        <span className="block truncate text-xs text-muted">
+                          {o.chatName ? `${o.chatName} · ` : ""}
+                          {timeAgo(o.lastSeenAt)}
+                        </span>
+                      </Link>
+                      <span className="flex shrink-0 items-center gap-3">
+                        <span className="font-semibold">{formatPrice(o.salePriceCents, o.currency)}</span>
+                        {link && (
+                          <a
+                            href={link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            aria-label={`Message ${o.sellerName ?? "seller"}`}
+                            className="rounded-full bg-accent p-2 text-accent-ink"
+                          >
+                            <WhatsAppIcon />
+                          </a>
+                        )}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
 
           {listing.rawText && (
             <details className="card p-4 text-sm" open>

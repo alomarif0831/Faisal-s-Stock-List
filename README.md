@@ -6,7 +6,12 @@ A WhatsApp bot plus a storefront, both running on Vercel.
 2. **Directory.** Everything appears on the website, organised by brand and category with search and filters. Each listing shows the seller, the group it came from and the original post, plus a **Message Seller** button that opens WhatsApp with an "is it still available?" message. Deals happen directly between buyer and seller.
    **Members only:** every page needs a free Clerk account; signed-out visitors are sent to `/sign-up` and returned to the page they wanted (see `src/proxy.ts`).
 3. **Stays fresh.** Reposts update the existing listing instead of duplicating it, "sold" messages take items down, and anything not re-posted within `LISTING_TTL_DAYS` drops off.
-4. **Opt-out.** Admin → Listings → **Remove seller** hides a seller's listings and stops listing their future posts.
+4. **Buyer tools.**
+   - **Find a Deal** (`/find`): item + max price. Shows matches at or under budget (with how much under), ones up to 15% over ("make an offer"), and matches posted without a price.
+   - **Deal alerts** (`/alerts`): save any search; every new post and price drop is checked against it, with an optional WhatsApp message from the bot (max 10 per alert per day).
+   - **Smart search** understands reseller shorthand (`16 pm`, `s25u`, `mbp`, `ip15`) and prices in the box (`ps5 under 400`, `$300-$450`); filter by price range and "last 24 hours".
+   - **Price check** on each item: lowest-of-N-sellers badge, every other seller's price with a one-tap message, **Make an offer** (prefilled WhatsApp with your price), Share, and "alert me if it drops".
+5. **Opt-out.** Admin → Listings → **Remove seller** hides a seller's listings and stops listing their future posts.
 
 > The earlier ordering flow (orders, Stripe payments, automatic seller verification) is still in the code but no longer shown on the public site.
 
